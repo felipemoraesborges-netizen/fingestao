@@ -9,11 +9,13 @@ import {
   BarChart3, 
   Settings,
   FolderPlus,
-  PlusCircle
+  PlusCircle,
+  TrendingUp,
+  PiggyBank
 } from 'lucide-react';
 
 interface NavItem {
-  id: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings';
+  id: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'investments' | 'savings' | 'reports' | 'settings';
   label: string;
   icon: LucideIcon;
   badge?: number;
@@ -37,6 +39,8 @@ export const Sidebar: React.FC = () => {
     { id: 'folders', label: 'Pastas & Projetos', icon: FolderKanban, badge: folders.filter(f => f.status === 'active').length },
     { id: 'transactions', label: 'Transações', icon: ReceiptText },
     { id: 'categories', label: 'Categorias & Tetos', icon: Tags },
+    { id: 'investments', label: 'Investimentos', icon: TrendingUp },
+    { id: 'savings', label: 'Metas de Poupança', icon: PiggyBank },
     { id: 'reports', label: 'Relatórios & Gráficos', icon: BarChart3 },
     { id: 'settings', label: 'Configurações & Nuvem', icon: Settings },
   ];

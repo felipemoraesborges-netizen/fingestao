@@ -9,6 +9,8 @@ import {
   Tags, 
   BarChart3, 
   Settings,
+  TrendingUp,
+  PiggyBank,
   X 
 } from 'lucide-react';
 
@@ -24,7 +26,7 @@ export const MobileNav: React.FC = () => {
 
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
-  const handleNav = (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings') => {
+  const handleNav = (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings') => {
     setActiveTab(tab);
     if (tab !== 'folders') {
       setSelectedFolderId(null);
@@ -56,6 +58,30 @@ export const MobileNav: React.FC = () => {
 
             <div className="grid grid-cols-3 gap-3">
               <button
+                onClick={() => handleNav('investments')}
+                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
+                  activeTab === 'investments'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <TrendingUp className="w-6 h-6 mb-1 text-emerald-500" />
+                <span className="text-xs">Investir</span>
+              </button>
+
+              <button
+                onClick={() => handleNav('savings')}
+                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
+                  activeTab === 'savings'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <PiggyBank className="w-6 h-6 mb-1 text-violet-500" />
+                <span className="text-xs">Metas</span>
+              </button>
+
+              <button
                 onClick={() => handleNav('categories')}
                 className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
                   activeTab === 'categories'
@@ -63,7 +89,7 @@ export const MobileNav: React.FC = () => {
                     : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                 }`}
               >
-                <Tags className="w-6 h-6 mb-1 text-emerald-500" />
+                <Tags className="w-6 h-6 mb-1 text-amber-500" />
                 <span className="text-xs">Categorias</span>
               </button>
 
@@ -152,7 +178,7 @@ export const MobileNav: React.FC = () => {
         <button
           onClick={() => setMoreMenuOpen(true)}
           className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
-            ['categories', 'reports', 'settings'].includes(activeTab)
+            ['categories', 'reports', 'settings', 'investments', 'savings'].includes(activeTab)
               ? 'text-emerald-600 dark:text-emerald-400 font-bold'
               : 'text-slate-400 dark:text-slate-500'
           }`}

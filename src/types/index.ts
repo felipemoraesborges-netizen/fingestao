@@ -84,3 +84,26 @@ export interface SupabaseConfig {
   anonKey: string;
   isConnected: boolean;
 }
+export type InvestmentType = 'renda_fixa' | 'tesouro_direto' | 'acoes' | 'fiis' | 'cripto' | 'poupanca' | 'outro';
+
+export interface Investment {
+  id: string;
+  name: string;
+  type: InvestmentType;
+  amountInvested: number;
+  currentValue: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  savedAmount: number;
+  deadline?: string; // YYYY-MM-DD
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}

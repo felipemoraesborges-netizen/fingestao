@@ -91,7 +91,7 @@ export const SettingsView: React.FC = () => {
       return;
     }
 
-    if (!confirm('Deseja enviar todos os seus dados locais (pastas, categorias, transações) para sua conta no Supabase? Registros existentes não serão duplicados.')) {
+    if (!confirm('Deseja enviar todos os seus dados locais (pastas, categorias, transações, investimentos e metas) para sua conta no Supabase? Registros existentes não serão duplicados.')) {
       return;
     }
 
@@ -211,6 +211,36 @@ CREATE INDEX IF NOT EXISTS idx_transactions_category ON public.transactions(cate
 CREATE INDEX IF NOT EXISTS idx_folders_user_status ON public.folders(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_categories_user ON public.categories(user_id);
 
+CREATE TABLE IF NOT EXISTS public.investments (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('renda_fixa', 'tesouro_direto', 'acoes', 'fiis', 'cripto', 'poupanca', 'outro')),
+  amount_invested NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  current_value NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "investments_manage" ON public.investments FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_investments_user ON public.investments(user_id);
+
+CREATE TABLE IF NOT EXISTS public.savings_goals (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  target_amount NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  saved_amount NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  deadline DATE,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.savings_goals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "savings_goals_manage" ON public.savings_goals FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_savings_goals_user ON public.savings_goals(user_id);
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -306,7 +336,7 @@ CREATE TRIGGER on_auth_user_created
                 <span>Enviar Dados Locais para a Nuvem</span>
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Copia todas as pastas, categorias e transações locais para o seu banco Supabase sem duplicar.
+                Copia todas as pastas, categorias, transações, investimentos e metas locais para o seu banco Supabase sem duplicar.
               </p>
             </div>
 

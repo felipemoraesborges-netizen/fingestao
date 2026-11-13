@@ -7,6 +7,8 @@ import { DashboardView } from './components/dashboard/DashboardView';
 import { FoldersView } from './components/folders/FoldersView';
 import { TransactionsView } from './components/transactions/TransactionsView';
 import { CategoriesView } from './components/categories/CategoriesView';
+import { InvestmentsView } from './components/investments/InvestmentsView';
+import { SavingsGoalsView } from './components/savings/SavingsGoalsView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { TransactionModal } from './components/modals/TransactionModal';
@@ -32,6 +34,8 @@ const MainLayout: React.FC = () => {
           {activeTab === 'folders' && <FoldersView />}
           {activeTab === 'transactions' && <TransactionsView />}
           {activeTab === 'categories' && <CategoriesView />}
+          {activeTab === 'investments' && <InvestmentsView />}
+          {activeTab === 'savings' && <SavingsGoalsView />}
           {activeTab === 'reports' && <ReportsView />}
           {activeTab === 'settings' && <SettingsView />}
         </main>

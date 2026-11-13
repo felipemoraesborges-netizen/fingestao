@@ -13,7 +13,8 @@ import {
   ArrowRight, 
   ReceiptText, 
   Sparkles, 
-  ChevronRight
+  ChevronRight,
+  PiggyBank
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -34,6 +35,8 @@ export const DashboardView: React.FC = () => {
     transactions,
     folders,
     categories,
+    investments,
+    savingsGoals,
     selectedMonth,
     setActiveTab,
     setSelectedFolderId,
@@ -43,6 +46,15 @@ export const DashboardView: React.FC = () => {
     setFolderModalOpen,
     setEditingFolder,
   } = useApp();
+
+  // Investment KPIs
+  const totalInvestedAmount = investments.reduce((sum, i) => sum + i.amountInvested, 0);
+  const totalCurrentInvestedValue = investments.reduce((sum, i) => sum + i.currentValue, 0);
+  const totalInvestmentProfit = totalCurrentInvestedValue - totalInvestedAmount;
+  const investmentProfitPct = totalInvestedAmount > 0 ? (totalInvestmentProfit / totalInvestedAmount) * 100 : 0;
+
+  // Primary Savings Goal (first one in list)
+  const primaryGoal = savingsGoals.length > 0 ? savingsGoals[0] : null;
 
   // Transactions in the selected month
   const monthTransactions = transactions.filter(t => t.date.startsWith(selectedMonth));
@@ -221,6 +233,91 @@ export const DashboardView: React.FC = () => {
             <FolderPlus className="w-4 h-4 text-blue-500" />
             <span>Nova Pasta</span>
           </button>
+        </div>
+      </div>
+
+      {/* Resumo de Investimentos e Meta Principal */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Card Total Investido */}
+        <div 
+          onClick={() => setActiveTab('investments')}
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs cursor-pointer hover:border-emerald-500/40 transition-all group"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Total Investido</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {investments.length} {investments.length === 1 ? 'ativo cadastrado' : 'ativos cadastrados'}
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 group-hover:text-emerald-500 transition-all" />
+          </div>
+          <div className="flex items-baseline justify-between">
+            <div>
+              <p className="text-2xl font-black text-slate-900 dark:text-white">
+                {formatCurrency(totalCurrentInvestedValue)}
+              </p>
+              <span className={`text-xs font-semibold ${totalInvestmentProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {totalInvestmentProfit >= 0 ? '+' : ''}{formatCurrency(totalInvestmentProfit)} ({investmentProfitPct >= 0 ? '+' : ''}{investmentProfitPct.toFixed(1)}%)
+              </span>
+            </div>
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 group-hover:underline">
+              Ver carteira →
+            </span>
+          </div>
+        </div>
+
+        {/* Card Meta Principal */}
+        <div 
+          onClick={() => setActiveTab('savings')}
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs cursor-pointer hover:border-violet-500/40 transition-all group"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-xl bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400">
+                <PiggyBank className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Meta Principal</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {primaryGoal ? primaryGoal.name : 'Nenhuma meta definida'}
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 group-hover:text-violet-500 transition-all" />
+          </div>
+
+          {primaryGoal ? (
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between text-xs">
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {formatCurrency(primaryGoal.savedAmount)} <span className="text-slate-400 font-normal">de {formatCurrency(primaryGoal.targetAmount)}</span>
+                </span>
+                <span className="text-violet-600 dark:text-violet-400 font-bold">
+                  {((primaryGoal.savedAmount / primaryGoal.targetAmount) * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div className="h-2.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div 
+                  className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all"
+                  style={{ width: `${Math.min(100, (primaryGoal.savedAmount / primaryGoal.targetAmount) * 100)}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>Faltam {formatCurrency(Math.max(0, primaryGoal.targetAmount - primaryGoal.savedAmount))}</span>
+                <span className="text-violet-600 dark:text-violet-400 font-semibold group-hover:underline">Acessar metas →</span>
+              </div>
+            </div>
+          ) : (
+            <div className="py-2 text-xs text-slate-400">
+              Clique para definir uma meta de poupança e planejar seus sonhos.
+            </div>
+          )}
         </div>
       </div>
 

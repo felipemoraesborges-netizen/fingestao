@@ -1,4 +1,4 @@
-import type { Category, Folder, Transaction, UserProfile, FolderStatus } from '../types';
+import type { Category, Folder, Transaction, UserProfile, FolderStatus, Investment, SavingsGoal } from '../types';
 import { StorageService } from './storageService';
 import { getSupabaseClient } from '../lib/supabase';
 import { INITIAL_CATEGORIES } from '../data/initialData';
@@ -10,6 +10,8 @@ export interface MigrationResult {
     categories: number;
     folders: number;
     transactions: number;
+    investments?: number;
+    savingsGoals?: number;
   };
 }
 
@@ -564,13 +566,17 @@ export class DataService {
       const localCategories = StorageService.getCategories();
       const localFolders = StorageService.getFolders();
       const localTransactions = StorageService.getTransactions();
+      const localInvestments = StorageService.getInvestments();
+      const localSavingsGoals = StorageService.getSavingsGoals();
       const localProfile = StorageService.getProfile();
 
       // 2. Buscar dados existentes na nuvem para não duplicar
-      const [remoteCatsRes, remoteFoldersRes, remoteTxRes] = await Promise.all([
+      const [remoteCatsRes, remoteFoldersRes, remoteTxRes, remoteInvRes, remoteGoalsRes] = await Promise.all([
         supabase.from('categories').select('id, name').eq('user_id', userId),
         supabase.from('folders').select('id, name').eq('user_id', userId),
         supabase.from('transactions').select('id, description, amount, date').eq('user_id', userId),
+        supabase.from('investments').select('id, name').eq('user_id', userId),
+        supabase.from('savings_goals').select('id, name').eq('user_id', userId),
       ]);
 
       const existingCatNames = new Set((remoteCatsRes.data || []).map(c => c.name.toLowerCase()));
@@ -578,10 +584,14 @@ export class DataService {
       const existingTxKeys = new Set(
         (remoteTxRes.data || []).map(t => `${t.description.toLowerCase()}_${Number(t.amount)}_${t.date}`)
       );
+      const existingInvNames = new Set((remoteInvRes.data || []).map(i => i.name.toLowerCase()));
+      const existingGoalNames = new Set((remoteGoalsRes.data || []).map(g => g.name.toLowerCase()));
 
       let migratedCategoriesCount = 0;
       let migratedFoldersCount = 0;
       let migratedTransactionsCount = 0;
+      let migratedInvestmentsCount = 0;
+      let migratedGoalsCount = 0;
 
       // 3. Migrar Categorias
       const categoriesToInsert = localCategories.filter(
@@ -652,7 +662,49 @@ export class DataService {
         else migratedTransactionsCount = transactionsToInsert.length;
       }
 
-      // 6. Atualizar Perfil na nuvem
+      // 6. Migrar Investimentos
+      const investmentsToInsert = localInvestments.filter(
+        i => !existingInvNames.has(i.name.toLowerCase())
+      );
+
+      if (investmentsToInsert.length > 0) {
+        const payload = investmentsToInsert.map(i => ({
+          id: i.id,
+          user_id: userId,
+          name: i.name,
+          type: i.type,
+          amount_invested: i.amountInvested,
+          current_value: i.currentValue,
+          notes: i.notes || null,
+          created_at: i.createdAt,
+        }));
+        const { error: invErr } = await supabase.from('investments').insert(payload);
+        if (invErr) console.warn('Aviso ao migrar investimentos:', invErr.message);
+        else migratedInvestmentsCount = investmentsToInsert.length;
+      }
+
+      // 7. Migrar Metas de Poupança
+      const goalsToInsert = localSavingsGoals.filter(
+        g => !existingGoalNames.has(g.name.toLowerCase())
+      );
+
+      if (goalsToInsert.length > 0) {
+        const payload = goalsToInsert.map(g => ({
+          id: g.id,
+          user_id: userId,
+          name: g.name,
+          target_amount: g.targetAmount,
+          saved_amount: g.savedAmount,
+          deadline: g.deadline || null,
+          notes: g.notes || null,
+          created_at: g.createdAt,
+        }));
+        const { error: goalErr } = await supabase.from('savings_goals').insert(payload);
+        if (goalErr) console.warn('Aviso ao migrar metas:', goalErr.message);
+        else migratedGoalsCount = goalsToInsert.length;
+      }
+
+      // 8. Atualizar Perfil na nuvem
       await this.updateProfile(localProfile, userId);
 
       return {
@@ -662,6 +714,8 @@ export class DataService {
           categories: migratedCategoriesCount,
           folders: migratedFoldersCount,
           transactions: migratedTransactionsCount,
+          investments: migratedInvestmentsCount,
+          savingsGoals: migratedGoalsCount,
         },
       };
     } catch (err: unknown) {
@@ -671,6 +725,242 @@ export class DataService {
         message: `Falha durante a migração: ${errorMsg}`,
         counts: { categories: 0, folders: 0, transactions: 0 },
       };
+    }
+  }
+
+  // ==========================================
+  // INVESTIMENTOS
+  // ==========================================
+  static async getInvestments(userId?: string | null): Promise<Investment[]> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      return StorageService.getInvestments();
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('investments')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(i => ({
+        id: i.id,
+        name: i.name,
+        type: i.type,
+        amountInvested: Number(i.amount_invested || 0),
+        currentValue: Number(i.current_value || 0),
+        notes: i.notes || undefined,
+        createdAt: i.created_at,
+        updatedAt: i.updated_at || undefined,
+      }));
+    } catch (err) {
+      console.error('Erro ao buscar investimentos no Supabase, usando local:', err);
+      return StorageService.getInvestments();
+    }
+  }
+
+  static async addInvestment(inv: Omit<Investment, 'id' | 'createdAt'>, userId?: string | null): Promise<Investment> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      return StorageService.addInvestment(inv);
+    }
+
+    const newId = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('investments')
+      .insert({
+        id: newId,
+        user_id: userId,
+        name: inv.name,
+        type: inv.type,
+        amount_invested: inv.amountInvested,
+        current_value: inv.currentValue,
+        notes: inv.notes || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Erro ao adicionar investimento no Supabase:', error);
+      throw new Error(`Falha ao salvar investimento: ${error.message}`);
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      type: data.type,
+      amountInvested: Number(data.amount_invested || 0),
+      currentValue: Number(data.current_value || 0),
+      notes: data.notes || undefined,
+      createdAt: data.created_at || now,
+      updatedAt: data.updated_at || undefined,
+    };
+  }
+
+  static async updateInvestment(inv: Investment, userId?: string | null): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      StorageService.updateInvestment(inv);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('investments')
+      .update({
+        name: inv.name,
+        type: inv.type,
+        amount_invested: inv.amountInvested,
+        current_value: inv.currentValue,
+        notes: inv.notes || null,
+      })
+      .eq('id', inv.id)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Erro ao atualizar investimento no Supabase:', error);
+      throw new Error(`Falha ao atualizar investimento: ${error.message}`);
+    }
+  }
+
+  static async deleteInvestment(id: string, userId?: string | null): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      StorageService.deleteInvestment(id);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('investments')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Erro ao excluir investimento no Supabase:', error);
+      throw new Error(`Falha ao excluir investimento: ${error.message}`);
+    }
+  }
+
+  // ==========================================
+  // METAS DE POUPANÇA
+  // ==========================================
+  static async getSavingsGoals(userId?: string | null): Promise<SavingsGoal[]> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      return StorageService.getSavingsGoals();
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('savings_goals')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(g => ({
+        id: g.id,
+        name: g.name,
+        targetAmount: Number(g.target_amount || 0),
+        savedAmount: Number(g.saved_amount || 0),
+        deadline: g.deadline || undefined,
+        notes: g.notes || undefined,
+        createdAt: g.created_at,
+        updatedAt: g.updated_at || undefined,
+      }));
+    } catch (err) {
+      console.error('Erro ao buscar metas no Supabase, usando local:', err);
+      return StorageService.getSavingsGoals();
+    }
+  }
+
+  static async addSavingsGoal(goal: Omit<SavingsGoal, 'id' | 'createdAt'>, userId?: string | null): Promise<SavingsGoal> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      return StorageService.addSavingsGoal(goal);
+    }
+
+    const newId = `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('savings_goals')
+      .insert({
+        id: newId,
+        user_id: userId,
+        name: goal.name,
+        target_amount: goal.targetAmount,
+        saved_amount: goal.savedAmount,
+        deadline: goal.deadline || null,
+        notes: goal.notes || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Erro ao adicionar meta no Supabase:', error);
+      throw new Error(`Falha ao salvar meta: ${error.message}`);
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      targetAmount: Number(data.target_amount || 0),
+      savedAmount: Number(data.saved_amount || 0),
+      deadline: data.deadline || undefined,
+      notes: data.notes || undefined,
+      createdAt: data.created_at || now,
+      updatedAt: data.updated_at || undefined,
+    };
+  }
+
+  static async updateSavingsGoal(goal: SavingsGoal, userId?: string | null): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      StorageService.updateSavingsGoal(goal);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('savings_goals')
+      .update({
+        name: goal.name,
+        target_amount: goal.targetAmount,
+        saved_amount: goal.savedAmount,
+        deadline: goal.deadline || null,
+        notes: goal.notes || null,
+      })
+      .eq('id', goal.id)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Erro ao atualizar meta no Supabase:', error);
+      throw new Error(`Falha ao atualizar meta: ${error.message}`);
+    }
+  }
+
+  static async deleteSavingsGoal(id: string, userId?: string | null): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) {
+      StorageService.deleteSavingsGoal(id);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('savings_goals')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Erro ao excluir meta no Supabase:', error);
+      throw new Error(`Falha ao excluir meta: ${error.message}`);
     }
   }
 }

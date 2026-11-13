@@ -162,3 +162,59 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 9. Tabela de Investimentos
+CREATE TABLE IF NOT EXISTS public.investments (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('renda_fixa', 'tesouro_direto', 'acoes', 'fiis', 'cripto', 'poupanca', 'outro')),
+  amount_invested NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  current_value NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem gerenciar seus investimentos" ON public.investments;
+CREATE POLICY "Usuários podem gerenciar seus investimentos"
+  ON public.investments FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_investments_user ON public.investments(user_id);
+
+DROP TRIGGER IF EXISTS trigger_investments_updated_at ON public.investments;
+CREATE TRIGGER trigger_investments_updated_at
+  BEFORE UPDATE ON public.investments
+  FOR EACH ROW EXECUTE FUNCTION public.set_current_timestamp_updated_at();
+
+-- 10. Tabela de Metas de Poupança
+CREATE TABLE IF NOT EXISTS public.savings_goals (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  target_amount NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  saved_amount NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+  deadline DATE,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.savings_goals ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem gerenciar suas metas" ON public.savings_goals;
+CREATE POLICY "Usuários podem gerenciar suas metas"
+  ON public.savings_goals FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_savings_goals_user ON public.savings_goals(user_id);
+
+DROP TRIGGER IF EXISTS trigger_savings_goals_updated_at ON public.savings_goals;
+CREATE TRIGGER trigger_savings_goals_updated_at
+  BEFORE UPDATE ON public.savings_goals
+  FOR EACH ROW EXECUTE FUNCTION public.set_current_timestamp_updated_at();

@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Folder, Transaction, Category } from '../types';
+import type { Folder, Transaction, Category, Investment, SavingsGoal } from '../types';
 import { formatCurrency, formatDate, getPaymentMethodLabel } from './formatters';
 
 export function exportFolderToCSV(folder: Folder, transactions: Transaction[], categories: Category[]): void {
@@ -249,6 +249,72 @@ export function exportMonthlyReportToPDF(
   });
 
   doc.save(`relatorio_mensal_${monthStr}.pdf`);
+}
+
+export function exportInvestmentsToCSV(investments: Investment[]): void {
+  const headers = ['Nome', 'Tipo', 'Valor Investido (R$)', 'Valor Atual (R$)', 'Lucro/Prejuízo (R$)', 'Rentabilidade (%)', 'Observações'];
+  const rows = investments.map(i => {
+    const profit = i.currentValue - i.amountInvested;
+    const pct = i.amountInvested > 0 ? (profit / i.amountInvested) * 100 : 0;
+    return [
+      `"${i.name.replace(/"/g, '""')}"`,
+      i.type,
+      i.amountInvested.toFixed(2).replace('.', ','),
+      i.currentValue.toFixed(2).replace('.', ','),
+      profit.toFixed(2).replace('.', ','),
+      pct.toFixed(2).replace('.', ','),
+      `"${(i.notes || '').replace(/"/g, '""')}"`,
+    ];
+  });
+
+  const totalInvested = investments.reduce((sum, i) => sum + i.amountInvested, 0);
+  const totalCurrent = investments.reduce((sum, i) => sum + i.currentValue, 0);
+  const totalProfit = totalCurrent - totalInvested;
+
+  const csvContent = [
+    `"Relatório de Investimentos - FinGestão"`,
+    `"Total Investido: ${formatCurrency(totalInvested)}"`,
+    `"Valor Atual Total: ${formatCurrency(totalCurrent)}"`,
+    `"Lucro/Prejuízo Líquido: ${formatCurrency(totalProfit)}"`,
+    `"Exportado em: ${new Date().toLocaleDateString('pt-BR')}"`,
+    '',
+    headers.join(';'),
+    ...rows.map(r => r.join(';')),
+  ].join('\r\n');
+
+  downloadFile(csvContent, `investimentos_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv;charset=utf-8;');
+}
+
+export function exportSavingsGoalsToCSV(goals: SavingsGoal[]): void {
+  const headers = ['Nome', 'Valor Alvo (R$)', 'Valor Guardado (R$)', 'Progresso (%)', 'Falta Guardar (R$)', 'Prazo', 'Observações'];
+  const rows = goals.map(g => {
+    const pct = g.targetAmount > 0 ? (g.savedAmount / g.targetAmount) * 100 : 0;
+    const remaining = Math.max(0, g.targetAmount - g.savedAmount);
+    return [
+      `"${g.name.replace(/"/g, '""')}"`,
+      g.targetAmount.toFixed(2).replace('.', ','),
+      g.savedAmount.toFixed(2).replace('.', ','),
+      pct.toFixed(1).replace('.', ','),
+      remaining.toFixed(2).replace('.', ','),
+      g.deadline ? formatDate(g.deadline) : 'Sem prazo',
+      `"${(g.notes || '').replace(/"/g, '""')}"`,
+    ];
+  });
+
+  const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+  const totalSaved = goals.reduce((sum, g) => sum + g.savedAmount, 0);
+
+  const csvContent = [
+    `"Metas de Poupança - FinGestão"`,
+    `"Total Alvo: ${formatCurrency(totalTarget)}"`,
+    `"Total Guardado: ${formatCurrency(totalSaved)}"`,
+    `"Exportado em: ${new Date().toLocaleDateString('pt-BR')}"`,
+    '',
+    headers.join(';'),
+    ...rows.map(r => r.join(';')),
+  ].join('\r\n');
+
+  downloadFile(csvContent, `metas_poupanca_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv;charset=utf-8;');
 }
 
 function downloadFile(content: string, fileName: string, mimeType: string) {

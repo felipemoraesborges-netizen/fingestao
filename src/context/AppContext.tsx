@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
-import type { Category, Folder, Transaction, UserProfile, BudgetAlert } from '../types';
+import type { Category, Folder, Transaction, UserProfile, BudgetAlert, Investment, SavingsGoal } from '../types';
 import { StorageService } from '../services/storageService';
 import type { MigrationResult } from '../services/dataService';
 import { DataService } from '../services/dataService';
@@ -10,8 +10,8 @@ import confetti from 'canvas-confetti';
 
 interface AppContextType {
   // Navigation
-  activeTab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings';
-  setActiveTab: (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings') => void;
+  activeTab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings';
+  setActiveTab: (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings') => void;
   selectedFolderId: string | null;
   setSelectedFolderId: (id: string | null) => void;
   selectedMonth: string;
@@ -26,6 +26,8 @@ interface AppContextType {
   categories: Category[];
   folders: Folder[];
   transactions: Transaction[];
+  investments: Investment[];
+  savingsGoals: SavingsGoal[];
   profile: UserProfile;
   alerts: BudgetAlert[];
   isLoadingData: boolean;
@@ -49,6 +51,14 @@ interface AppContextType {
   addCategory: (cat: Omit<Category, 'id'>) => Promise<Category>;
   updateCategory: (cat: Category) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+
+  addInvestment: (inv: Omit<Investment, 'id' | 'createdAt'>) => Promise<Investment>;
+  updateInvestment: (inv: Investment) => Promise<void>;
+  deleteInvestment: (id: string) => Promise<void>;
+
+  addSavingsGoal: (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<SavingsGoal>;
+  updateSavingsGoal: (goal: SavingsGoal) => Promise<void>;
+  deleteSavingsGoal: (id: string) => Promise<void>;
 
   updateProfile: (profile: UserProfile) => Promise<void>;
   resetDemoData: () => void;
@@ -95,7 +105,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation & UI state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings'>('dashboard');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthStr());
   
@@ -115,6 +125,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [categories, setCategories] = useState<Category[]>(() => StorageService.getCategories());
   const [folders, setFolders] = useState<Folder[]>(() => StorageService.getFolders());
   const [transactions, setTransactions] = useState<Transaction[]>(() => StorageService.getTransactions());
+  const [investments, setInvestments] = useState<Investment[]>(() => StorageService.getInvestments());
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>(() => StorageService.getSavingsGoals());
   const [profile, setProfile] = useState<UserProfile>(() => StorageService.getProfile());
   const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
 
@@ -149,22 +161,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoadingData(true);
     try {
       if (user) {
-        const [cats, flds, txs, prof] = await Promise.all([
+        const [cats, flds, txs, prof, invs, goals] = await Promise.all([
           DataService.getCategories(user.id),
           DataService.getFolders(user.id),
           DataService.getTransactions(user.id),
           DataService.getProfile(user.id, user.email),
+          DataService.getInvestments(user.id),
+          DataService.getSavingsGoals(user.id),
         ]);
         setCategories(cats);
         setFolders(flds);
         setTransactions(txs);
         setProfile(prof);
+        setInvestments(invs);
+        setSavingsGoals(goals);
       } else {
         // Modo local / demo
         setCategories(StorageService.getCategories());
         setFolders(StorageService.getFolders());
         setTransactions(StorageService.getTransactions());
         setProfile(StorageService.getProfile());
+        setInvestments(StorageService.getInvestments());
+        setSavingsGoals(StorageService.getSavingsGoals());
       }
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
@@ -424,6 +442,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Investments CRUD
+  const addInvestment = async (invData: Omit<Investment, 'id' | 'createdAt'>): Promise<Investment> => {
+    try {
+      const created = await DataService.addInvestment(invData, currentUser?.id);
+      setInvestments(prev => [created, ...prev]);
+      return created;
+    } catch (err: any) {
+      alert(err.message || 'Erro ao criar investimento.');
+      throw err;
+    }
+  };
+
+  const updateInvestment = async (inv: Investment): Promise<void> => {
+    try {
+      await DataService.updateInvestment(inv, currentUser?.id);
+      setInvestments(prev => prev.map(i => (i.id === inv.id ? inv : i)));
+    } catch (err: any) {
+      alert(err.message || 'Erro ao atualizar investimento.');
+      throw err;
+    }
+  };
+
+  const deleteInvestment = async (id: string): Promise<void> => {
+    try {
+      await DataService.deleteInvestment(id, currentUser?.id);
+      setInvestments(prev => prev.filter(i => i.id !== id));
+    } catch (err: any) {
+      alert(err.message || 'Erro ao excluir investimento.');
+      throw err;
+    }
+  };
+
+  // Savings Goals CRUD
+  const addSavingsGoal = async (goalData: Omit<SavingsGoal, 'id' | 'createdAt'>): Promise<SavingsGoal> => {
+    try {
+      const created = await DataService.addSavingsGoal(goalData, currentUser?.id);
+      setSavingsGoals(prev => [created, ...prev]);
+      return created;
+    } catch (err: any) {
+      alert(err.message || 'Erro ao criar meta de poupança.');
+      throw err;
+    }
+  };
+
+  const updateSavingsGoal = async (goal: SavingsGoal): Promise<void> => {
+    try {
+      await DataService.updateSavingsGoal(goal, currentUser?.id);
+      setSavingsGoals(prev => prev.map(g => (g.id === goal.id ? goal : g)));
+    } catch (err: any) {
+      alert(err.message || 'Erro ao atualizar meta de poupança.');
+      throw err;
+    }
+  };
+
+  const deleteSavingsGoal = async (id: string): Promise<void> => {
+    try {
+      await DataService.deleteSavingsGoal(id, currentUser?.id);
+      setSavingsGoals(prev => prev.filter(g => g.id !== id));
+    } catch (err: any) {
+      alert(err.message || 'Erro ao excluir meta de poupança.');
+      throw err;
+    }
+  };
+
   // Profile
   const updateProfile = async (newProfile: UserProfile): Promise<void> => {
     try {
@@ -440,6 +522,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCategories(StorageService.getCategories());
     setFolders(StorageService.getFolders());
     setTransactions(StorageService.getTransactions());
+    setInvestments(StorageService.getInvestments());
+    setSavingsGoals(StorageService.getSavingsGoals());
     setProfile(StorageService.getProfile());
     setDismissedAlertIds([]);
   };
@@ -449,6 +533,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCategories([]);
     setFolders([]);
     setTransactions([]);
+    setInvestments([]);
+    setSavingsGoals([]);
     setDismissedAlertIds([]);
   };
 
@@ -560,6 +646,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         categories,
         folders,
         transactions,
+        investments,
+        savingsGoals,
         profile,
         alerts: alerts.filter(a => !dismissedAlertIds.includes(a.id)),
         isLoadingData,
@@ -577,6 +665,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCategory,
         updateCategory,
         deleteCategory,
+        addInvestment,
+        updateInvestment,
+        deleteInvestment,
+        addSavingsGoal,
+        updateSavingsGoal,
+        deleteSavingsGoal,
         updateProfile,
         resetDemoData,
         clearAllData,

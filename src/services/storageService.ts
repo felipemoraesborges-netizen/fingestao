@@ -1,4 +1,4 @@
-import type { Category, Folder, Transaction, UserProfile } from '../types';
+import type { Category, Folder, Transaction, UserProfile, Investment, SavingsGoal } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_FOLDERS, INITIAL_TRANSACTIONS } from '../data/initialData';
 import { getSupabaseClient } from '../lib/supabase';
 
@@ -7,6 +7,8 @@ const KEYS = {
   FOLDERS: 'fingestao_folders_v1',
   TRANSACTIONS: 'fingestao_transactions_v1',
   PROFILE: 'fingestao_profile_v1',
+  INVESTMENTS: 'fingestao_investments_v1',
+  SAVINGS_GOALS: 'fingestao_savings_goals_v1',
 };
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -163,6 +165,80 @@ export class StorageService {
     this.saveTransactions(transactions);
   }
 
+  // --- INVESTIMENTOS ---
+  static getInvestments(): Investment[] {
+    const raw = localStorage.getItem(KEYS.INVESTMENTS);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  static saveInvestments(investments: Investment[]): void {
+    localStorage.setItem(KEYS.INVESTMENTS, JSON.stringify(investments));
+  }
+
+  static addInvestment(inv: Omit<Investment, 'id' | 'createdAt'>): Investment {
+    const investments = this.getInvestments();
+    const newInv: Investment = {
+      ...inv,
+      id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    };
+    investments.unshift(newInv);
+    this.saveInvestments(investments);
+    return newInv;
+  }
+
+  static updateInvestment(updated: Investment): void {
+    const investments = this.getInvestments().map(i => (i.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : i));
+    this.saveInvestments(investments);
+  }
+
+  static deleteInvestment(id: string): void {
+    const investments = this.getInvestments().filter(i => i.id !== id);
+    this.saveInvestments(investments);
+  }
+
+  // --- METAS DE POUPANÇA ---
+  static getSavingsGoals(): SavingsGoal[] {
+    const raw = localStorage.getItem(KEYS.SAVINGS_GOALS);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  static saveSavingsGoals(goals: SavingsGoal[]): void {
+    localStorage.setItem(KEYS.SAVINGS_GOALS, JSON.stringify(goals));
+  }
+
+  static addSavingsGoal(goal: Omit<SavingsGoal, 'id' | 'createdAt'>): SavingsGoal {
+    const goals = this.getSavingsGoals();
+    const newGoal: SavingsGoal = {
+      ...goal,
+      id: `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    };
+    goals.unshift(newGoal);
+    this.saveSavingsGoals(goals);
+    return newGoal;
+  }
+
+  static updateSavingsGoal(updated: SavingsGoal): void {
+    const goals = this.getSavingsGoals().map(g => (g.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : g));
+    this.saveSavingsGoals(goals);
+  }
+
+  static deleteSavingsGoal(id: string): void {
+    const goals = this.getSavingsGoals().filter(g => g.id !== id);
+    this.saveSavingsGoals(goals);
+  }
+
   // --- PERFIL ---
   static getProfile(): UserProfile {
     const raw = localStorage.getItem(KEYS.PROFILE);
@@ -193,16 +269,20 @@ export class StorageService {
     localStorage.setItem(KEYS.CATEGORIES, JSON.stringify([]));
     localStorage.setItem(KEYS.FOLDERS, JSON.stringify([]));
     localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([]));
+    localStorage.setItem(KEYS.INVESTMENTS, JSON.stringify([]));
+    localStorage.setItem(KEYS.SAVINGS_GOALS, JSON.stringify([]));
   }
 
   static exportBackup(): string {
     const backup = {
-      version: '1.0',
+      version: '1.1',
       exportedAt: new Date().toISOString(),
       profile: this.getProfile(),
       categories: this.getCategories(),
       folders: this.getFolders(),
       transactions: this.getTransactions(),
+      investments: this.getInvestments(),
+      savingsGoals: this.getSavingsGoals(),
     };
     return JSON.stringify(backup, null, 2);
   }
@@ -214,6 +294,8 @@ export class StorageService {
       if (Array.isArray(data.folders)) this.saveFolders(data.folders);
       if (Array.isArray(data.transactions)) this.saveTransactions(data.transactions);
       if (data.profile) this.saveProfile(data.profile);
+      if (Array.isArray(data.investments)) this.saveInvestments(data.investments);
+      if (Array.isArray(data.savingsGoals)) this.saveSavingsGoals(data.savingsGoals);
       return true;
     } catch (e) {
       console.error('Erro ao importar backup:', e);
