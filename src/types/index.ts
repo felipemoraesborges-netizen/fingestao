@@ -107,3 +107,79 @@ export interface SavingsGoal {
   createdAt: string;
   updatedAt?: string;
 }
+
+// ─────────────────────────────────────────────
+// GAMIFICAÇÃO — Trilha de Conquistas
+// ─────────────────────────────────────────────
+
+export type GoalStatus = 'bloqueada' | 'em_andamento' | 'concluida';
+export type ContributionType = 'aporte' | 'retirada';
+export type AchievementRarity = 'comum' | 'rara' | 'epica' | 'lendaria';
+
+export interface Goal {
+  id: string;
+  nome: string;
+  preco: number;
+  categoria: string;
+  imagemUrl?: string;
+  linkLoja?: string;
+  prioridade?: number;
+  ordemManual?: number;
+  status: GoalStatus;
+  valorAcumulado: number;
+  conquistadoEm?: string;
+  observacao?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface Contribution {
+  id: string;
+  goalId: string;
+  valor: number;
+  tipo: ContributionType;
+  data: string; // YYYY-MM-DD
+  nota?: string;
+  createdAt: string;
+}
+
+export interface Achievement {
+  id: string;
+  goalId?: string;
+  titulo: string;
+  descricao?: string;
+  iconeUrl?: string;
+  raridade: AchievementRarity;
+  desbloqueadaEm?: string;
+  personalizada: boolean;
+  oculta: boolean;
+  frasePessoal?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface UserProgress {
+  userId: string;
+  xp: number;
+  nivel: number;
+  sequenciaMeses: number;
+  rankAtualId?: string;
+  updatedAt: string;
+}
+
+export interface Rank {
+  id: string;
+  nome: string;
+  cor: string;
+  iconeUrl?: string;
+  conquistasNecessarias: number;
+  ordem: number;
+  padrao: boolean;
+  createdAt: string;
+}
+
+export interface RankHistory {
+  id: string;
+  rankId: string;
+  alcancadaEm: string;
+}

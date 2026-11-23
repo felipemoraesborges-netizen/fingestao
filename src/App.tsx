@@ -11,6 +11,7 @@ import { InvestmentsView } from './components/investments/InvestmentsView';
 import { SavingsGoalsView } from './components/savings/SavingsGoalsView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
+import { GamificationView } from './components/trail/GamificationView';
 import { TransactionModal } from './components/modals/TransactionModal';
 import { FolderModal } from './components/modals/FolderModal';
 import { CategoryModal } from './components/modals/CategoryModal';
@@ -36,6 +37,7 @@ const MainLayout: React.FC = () => {
           {activeTab === 'categories' && <CategoriesView />}
           {activeTab === 'investments' && <InvestmentsView />}
           {activeTab === 'savings' && <SavingsGoalsView />}
+          {activeTab === 'trail' && <GamificationView />}
           {activeTab === 'reports' && <ReportsView />}
           {activeTab === 'settings' && <SettingsView />}
         </main>

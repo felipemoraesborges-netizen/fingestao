@@ -10,8 +10,8 @@ import confetti from 'canvas-confetti';
 
 interface AppContextType {
   // Navigation
-  activeTab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings';
-  setActiveTab: (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings') => void;
+  activeTab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail';
+  setActiveTab: (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail') => void;
   selectedFolderId: string | null;
   setSelectedFolderId: (id: string | null) => void;
   selectedMonth: string;
@@ -105,7 +105,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation & UI state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail'>('dashboard');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthStr());
   

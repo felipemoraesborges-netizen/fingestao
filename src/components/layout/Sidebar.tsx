@@ -11,11 +11,12 @@ import {
   FolderPlus,
   PlusCircle,
   TrendingUp,
-  PiggyBank
+  PiggyBank,
+  Map
 } from 'lucide-react';
 
 interface NavItem {
-  id: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'investments' | 'savings' | 'reports' | 'settings';
+  id: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'investments' | 'savings' | 'trail' | 'reports' | 'settings';
   label: string;
   icon: LucideIcon;
   badge?: number;
@@ -41,6 +42,7 @@ export const Sidebar: React.FC = () => {
     { id: 'categories', label: 'Categorias & Tetos', icon: Tags },
     { id: 'investments', label: 'Investimentos', icon: TrendingUp },
     { id: 'savings', label: 'Metas de Poupança', icon: PiggyBank },
+    { id: 'trail', label: 'Trilha de Conquistas', icon: Map },
     { id: 'reports', label: 'Relatórios & Gráficos', icon: BarChart3 },
     { id: 'settings', label: 'Configurações & Nuvem', icon: Settings },
   ];

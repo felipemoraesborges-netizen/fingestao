@@ -11,6 +11,7 @@ import {
   Settings,
   TrendingUp,
   PiggyBank,
+  Map,
   X 
 } from 'lucide-react';
 
@@ -26,7 +27,7 @@ export const MobileNav: React.FC = () => {
 
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
-  const handleNav = (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings') => {
+  const handleNav = (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail') => {
     setActiveTab(tab);
     if (tab !== 'folders') {
       setSelectedFolderId(null);
@@ -79,6 +80,18 @@ export const MobileNav: React.FC = () => {
               >
                 <PiggyBank className="w-6 h-6 mb-1 text-violet-500" />
                 <span className="text-xs">Metas</span>
+              </button>
+
+              <button
+                onClick={() => handleNav('trail')}
+                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
+                  activeTab === 'trail'
+                    ? 'bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-600 dark:text-violet-400 font-bold'
+                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <Map className="w-6 h-6 mb-1 text-indigo-500" />
+                <span className="text-xs">Trilha</span>
               </button>
 
               <button
@@ -178,7 +191,7 @@ export const MobileNav: React.FC = () => {
         <button
           onClick={() => setMoreMenuOpen(true)}
           className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
-            ['categories', 'reports', 'settings', 'investments', 'savings'].includes(activeTab)
+            ['categories', 'reports', 'settings', 'investments', 'savings', 'trail'].includes(activeTab)
               ? 'text-emerald-600 dark:text-emerald-400 font-bold'
               : 'text-slate-400 dark:text-slate-500'
           }`}
