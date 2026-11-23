@@ -1,8 +1,21 @@
 import { getSupabaseClient } from '../lib/supabase';
 import type { Goal, Contribution, Achievement, UserProgress, Rank } from '../types';
 
-const uid = (prefix: string) =>
-  `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+/**
+ * Gera um UUID v4 válido compatível com colunas do tipo UUID no Supabase/PostgreSQL.
+ * Usa crypto.randomUUID() nativo do navegador / ambiente moderno.
+ */
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback RFC4122 v4
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 function mapGoal(row: Record<string, unknown>): Goal {
   return {
@@ -120,7 +133,7 @@ export class GamificationService {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) throw new Error('Supabase não conectado.');
 
-    const newId = uid('meta');
+    const newId = generateUUID();
     const payload = {
       id: newId,
       user_id: userId,
@@ -248,7 +261,7 @@ export class GamificationService {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) throw new Error('Supabase não conectado.');
 
-    const newId = uid('ctb');
+    const newId = generateUUID();
     const payloadPt = {
       id: newId,
       user_id: userId,
@@ -340,7 +353,7 @@ export class GamificationService {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) throw new Error('Supabase não conectado.');
 
-    const newId = uid('conq');
+    const newId = generateUUID();
     const payloadPt = {
       id: newId,
       user_id: userId,
@@ -541,7 +554,7 @@ export class GamificationService {
       const { error: rpcErr2 } = await supabase.rpc('seed_default_ranks', { p_user_id: userId });
       if (!rpcErr2) return;
 
-      // Se ambas as funções RPC não existirem, faz insert direto na tabela patentes / ranks
+      // Se ambas as funções RPC não existirem, faz insert direto na tabela patentes / ranks com UUID válido
       const defaultRanks = [
         { nome: 'Bronze', cor: '#cd7f32', conquistas_necessarias: 0, ordem: 0 },
         { nome: 'Prata', cor: '#c0c0c0', conquistas_necessarias: 2, ordem: 1 },
@@ -553,7 +566,7 @@ export class GamificationService {
       ];
 
       const rowsPt = defaultRanks.map(r => ({
-        id: uid('pat'),
+        id: generateUUID(),
         user_id: userId,
         nome: r.nome,
         cor: r.cor,
@@ -579,11 +592,11 @@ export class GamificationService {
     if (!supabase || !userId) return;
 
     try {
-      const payloadPt = { id: uid('hp'), user_id: userId, patente_id: rankId };
+      const payloadPt = { id: generateUUID(), user_id: userId, patente_id: rankId };
       const { error } = await supabase.from('historico_patentes').insert(payloadPt);
 
       if (error && (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('patente_id'))) {
-        await supabase.from('rank_history').insert({ id: uid('rh'), user_id: userId, rank_id: rankId });
+        await supabase.from('rank_history').insert({ id: generateUUID(), user_id: userId, rank_id: rankId });
       }
     } catch (e) {
       console.warn('Erro ao registrar histórico de patente:', e);

@@ -226,7 +226,7 @@ CREATE TRIGGER trigger_savings_goals_updated_at
 
 -- 11.1 Patentes
 CREATE TABLE IF NOT EXISTS public.patentes (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   nome TEXT NOT NULL,
   cor TEXT NOT NULL DEFAULT '#6b7280',
@@ -249,7 +249,7 @@ CREATE INDEX IF NOT EXISTS idx_patentes_user ON public.patentes(user_id);
 
 -- 11.2 Metas de Compra (Fases da Trilha)
 CREATE TABLE IF NOT EXISTS public.metas_compra (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   nome TEXT NOT NULL,
   preco NUMERIC(14,2) NOT NULL DEFAULT 0.00,
@@ -284,9 +284,9 @@ CREATE TRIGGER trigger_metas_compra_updated_at
 
 -- 11.3 Contribuições (Aportes e Retiradas nas Metas)
 CREATE TABLE IF NOT EXISTS public.contribuicoes (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  meta_id TEXT REFERENCES public.metas_compra(id) ON DELETE CASCADE NOT NULL,
+  meta_id UUID REFERENCES public.metas_compra(id) ON DELETE CASCADE NOT NULL,
   valor NUMERIC(14,2) NOT NULL,
   tipo TEXT NOT NULL CHECK (tipo IN ('aporte','retirada')),
   data DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -307,9 +307,9 @@ CREATE INDEX IF NOT EXISTS idx_contribuicoes_meta ON public.contribuicoes(meta_i
 
 -- 11.4 Conquistas (Galeria)
 CREATE TABLE IF NOT EXISTS public.conquistas (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  meta_id TEXT REFERENCES public.metas_compra(id) ON DELETE SET NULL,
+  meta_id UUID REFERENCES public.metas_compra(id) ON DELETE SET NULL,
   titulo TEXT NOT NULL,
   descricao TEXT,
   icone_url TEXT,
@@ -343,7 +343,7 @@ CREATE TABLE IF NOT EXISTS public.progresso_usuario (
   xp INTEGER NOT NULL DEFAULT 0,
   nivel INTEGER NOT NULL DEFAULT 1,
   sequencia_meses INTEGER NOT NULL DEFAULT 0,
-  patente_atual_id TEXT REFERENCES public.patentes(id) ON DELETE SET NULL,
+  patente_atual_id UUID REFERENCES public.patentes(id) ON DELETE SET NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -362,9 +362,9 @@ CREATE TRIGGER trigger_progresso_usuario_updated_at
 
 -- 11.6 Histórico de Patentes
 CREATE TABLE IF NOT EXISTS public.historico_patentes (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  patente_id TEXT REFERENCES public.patentes(id) ON DELETE CASCADE NOT NULL,
+  patente_id UUID REFERENCES public.patentes(id) ON DELETE CASCADE NOT NULL,
   alcancada_em TIMESTAMPTZ DEFAULT NOW()
 );
 
