@@ -2,6 +2,7 @@ import type { Category, Folder, Transaction, UserProfile, FolderStatus, Investme
 import { StorageService } from './storageService';
 import { getSupabaseClient } from '../lib/supabase';
 import { INITIAL_CATEGORIES } from '../data/initialData';
+import { generateUUID, isValidUUID, ensureUUID } from '../utils/id';
 
 export interface MigrationResult {
   success: boolean;
@@ -75,7 +76,7 @@ export class DataService {
 
     try {
       const payload = INITIAL_CATEGORIES.map(cat => ({
-        id: cat.id,
+        id: generateUUID(),
         user_id: userId,
         name: cat.name,
         icon: cat.icon,
@@ -111,7 +112,7 @@ export class DataService {
       return StorageService.addCategory(cat);
     }
 
-    const newId = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newId = generateUUID();
     const { data, error } = await supabase
       .from('categories')
       .insert({
@@ -148,6 +149,11 @@ export class DataService {
       return;
     }
 
+    if (!isValidUUID(cat.id)) {
+      await this.addCategory(cat, userId);
+      return;
+    }
+
     const { error } = await supabase
       .from('categories')
       .update({
@@ -169,6 +175,11 @@ export class DataService {
   static async deleteCategory(id: string, userId?: string | null): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) {
+      StorageService.deleteCategory(id);
+      return;
+    }
+
+    if (!isValidUUID(id)) {
       StorageService.deleteCategory(id);
       return;
     }
@@ -228,7 +239,7 @@ export class DataService {
       return StorageService.addFolder(folder);
     }
 
-    const newId = `folder-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newId = generateUUID();
     const now = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -272,6 +283,11 @@ export class DataService {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) {
       StorageService.updateFolder(folder);
+      return;
+    }
+
+    if (!isValidUUID(folder.id)) {
+      await this.addFolder(folder, userId);
       return;
     }
 
@@ -338,6 +354,11 @@ export class DataService {
       return;
     }
 
+    if (!isValidUUID(id)) {
+      StorageService.deleteFolder(id);
+      return;
+    }
+
     const { error } = await supabase
       .from('folders')
       .delete()
@@ -393,8 +414,22 @@ export class DataService {
       return StorageService.addTransaction(tx);
     }
 
-    const newId = `tx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newId = generateUUID();
     const now = new Date().toISOString();
+
+    let targetCategoryId = tx.categoryId;
+    if (!isValidUUID(targetCategoryId)) {
+      const cats = await this.getCategories(userId);
+      const found = cats.find(c => c.id === tx.categoryId || c.name.toLowerCase() === tx.categoryId.toLowerCase());
+      targetCategoryId = (found && isValidUUID(found.id)) ? found.id : (cats[0]?.id && isValidUUID(cats[0].id) ? cats[0].id : targetCategoryId);
+    }
+
+    let targetFolderId = tx.folderId || null;
+    if (targetFolderId && !isValidUUID(targetFolderId)) {
+      const flds = await this.getFolders(userId);
+      const found = flds.find(f => f.id === targetFolderId || f.name.toLowerCase() === targetFolderId.toLowerCase());
+      targetFolderId = (found && isValidUUID(found.id)) ? found.id : null;
+    }
 
     const { data, error } = await supabase
       .from('transactions')
@@ -405,8 +440,8 @@ export class DataService {
         amount: tx.amount,
         description: tx.description,
         date: tx.date,
-        category_id: tx.categoryId,
-        folder_id: tx.folderId || null,
+        category_id: targetCategoryId,
+        folder_id: targetFolderId,
         payment_method: tx.paymentMethod,
         is_recurring: tx.isRecurring,
         notes: tx.notes || null,
