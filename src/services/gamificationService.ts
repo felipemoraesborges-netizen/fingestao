@@ -1,21 +1,6 @@
 import { getSupabaseClient } from '../lib/supabase';
 import type { Goal, Contribution, Achievement, UserProgress, Rank } from '../types';
-
-/**
- * Gera um UUID v4 válido compatível com colunas do tipo UUID no Supabase/PostgreSQL.
- * Usa crypto.randomUUID() nativo do navegador / ambiente moderno.
- */
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  // Fallback RFC4122 v4
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
+import { generateUUID, isValidUUID, ensureUUID } from '../utils/id';
 
 function mapGoal(row: Record<string, unknown>): Goal {
   return {
@@ -172,6 +157,11 @@ export class GamificationService {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) return;
 
+    if (!isValidUUID(goal.id)) {
+      await this.addGoal(goal, userId);
+      return;
+    }
+
     const payload = {
       nome: goal.nome,
       preco: goal.preco,
@@ -204,6 +194,8 @@ export class GamificationService {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) return;
 
+    if (!isValidUUID(id)) return;
+
     let { error } = await supabase
       .from('metas_compra')
       .delete()
@@ -232,7 +224,7 @@ export class GamificationService {
         .eq('user_id', userId)
         .order('data', { ascending: false });
 
-      if (goalId) q = q.eq('meta_id', goalId);
+      if (goalId && isValidUUID(goalId)) q = q.eq('meta_id', goalId);
       const { data, error } = await q;
 
       if (!error && data) return data.map(mapContribution);
@@ -243,7 +235,7 @@ export class GamificationService {
           .select('*')
           .eq('user_id', userId)
           .order('data', { ascending: false });
-        if (goalId) q2 = q2.eq('goal_id', goalId);
+        if (goalId && isValidUUID(goalId)) q2 = q2.eq('goal_id', goalId);
         const fb = await q2;
         if (!fb.error && fb.data) return fb.data.map(mapContribution);
       }
@@ -262,10 +254,11 @@ export class GamificationService {
     if (!supabase || !userId) throw new Error('Supabase não conectado.');
 
     const newId = generateUUID();
+    const validMetaId = ensureUUID(contrib.goalId);
     const payloadPt = {
       id: newId,
       user_id: userId,
-      meta_id: contrib.goalId,
+      meta_id: validMetaId,
       valor: contrib.valor,
       tipo: contrib.tipo,
       data: contrib.data,
@@ -282,7 +275,7 @@ export class GamificationService {
       const payloadEn = {
         id: newId,
         user_id: userId,
-        goal_id: contrib.goalId,
+        goal_id: validMetaId,
         valor: contrib.valor,
         tipo: contrib.tipo,
         data: contrib.data,
@@ -300,6 +293,8 @@ export class GamificationService {
   static async deleteContribution(id: string, userId: string): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) return;
+
+    if (!isValidUUID(id)) return;
 
     let { error } = await supabase
       .from('contribuicoes')
@@ -354,10 +349,11 @@ export class GamificationService {
     if (!supabase || !userId) throw new Error('Supabase não conectado.');
 
     const newId = generateUUID();
+    const validMetaId = ach.goalId ? (isValidUUID(ach.goalId) ? ach.goalId : ensureUUID(ach.goalId)) : null;
     const payloadPt = {
       id: newId,
       user_id: userId,
-      meta_id: ach.goalId ?? null,
+      meta_id: validMetaId,
       titulo: ach.titulo,
       descricao: ach.descricao ?? null,
       icone_url: ach.iconeUrl ?? null,
@@ -378,7 +374,7 @@ export class GamificationService {
       const payloadEn = {
         id: newId,
         user_id: userId,
-        goal_id: ach.goalId ?? null,
+        goal_id: validMetaId,
         titulo: ach.titulo,
         descricao: ach.descricao ?? null,
         icone_url: ach.iconeUrl ?? null,
@@ -400,6 +396,11 @@ export class GamificationService {
   static async updateAchievement(ach: Achievement, userId: string): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) return;
+
+    if (!isValidUUID(ach.id)) {
+      await this.addAchievement(ach, userId);
+      return;
+    }
 
     const payloadPt = {
       titulo: ach.titulo,
@@ -429,6 +430,8 @@ export class GamificationService {
   static async deleteAchievement(id: string, userId: string): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) return;
+
+    if (!isValidUUID(id)) return;
 
     let { error } = await supabase
       .from('conquistas')

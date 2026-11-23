@@ -1,6 +1,7 @@
 import type { Category, Folder, Transaction, UserProfile, Investment, SavingsGoal } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_FOLDERS, INITIAL_TRANSACTIONS } from '../data/initialData';
 import { getSupabaseClient } from '../lib/supabase';
+import { generateUUID } from '../utils/id';
 
 const KEYS = {
   CATEGORIES: 'fingestao_categories_v1',
@@ -41,7 +42,7 @@ export class StorageService {
     const categories = this.getCategories();
     const newCategory: Category = {
       ...category,
-      id: `cat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
     };
     categories.push(newCategory);
     this.saveCategories(categories);
@@ -80,7 +81,7 @@ export class StorageService {
     const folders = this.getFolders();
     const newFolder: Folder = {
       ...folder,
-      id: `folder-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
       createdAt: new Date().toISOString(),
     };
     folders.unshift(newFolder);
@@ -147,7 +148,7 @@ export class StorageService {
     const transactions = this.getTransactions();
     const newTx: Transaction = {
       ...tx,
-      id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
       createdAt: new Date().toISOString(),
     };
     transactions.unshift(newTx);
@@ -184,7 +185,7 @@ export class StorageService {
     const investments = this.getInvestments();
     const newInv: Investment = {
       ...inv,
-      id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
       createdAt: new Date().toISOString(),
     };
     investments.unshift(newInv);
@@ -221,7 +222,7 @@ export class StorageService {
     const goals = this.getSavingsGoals();
     const newGoal: SavingsGoal = {
       ...goal,
-      id: `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
       createdAt: new Date().toISOString(),
     };
     goals.unshift(newGoal);

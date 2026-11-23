@@ -424,10 +424,11 @@ export class DataService {
       targetCategoryId = (found && isValidUUID(found.id)) ? found.id : (cats[0]?.id && isValidUUID(cats[0].id) ? cats[0].id : targetCategoryId);
     }
 
-    let targetFolderId = tx.folderId || null;
+    let targetFolderId: string | null = tx.folderId || null;
     if (targetFolderId && !isValidUUID(targetFolderId)) {
+      const folderToMatch = targetFolderId.toLowerCase();
       const flds = await this.getFolders(userId);
-      const found = flds.find(f => f.id === targetFolderId || f.name.toLowerCase() === targetFolderId.toLowerCase());
+      const found = flds.find(f => f.id === targetFolderId || f.name.toLowerCase() === folderToMatch);
       targetFolderId = (found && isValidUUID(found.id)) ? found.id : null;
     }
 
@@ -628,21 +629,37 @@ export class DataService {
       let migratedInvestmentsCount = 0;
       let migratedGoalsCount = 0;
 
+      // Mapas de conversão de IDs legados para UUIDs canônicos
+      const catIdMap = new Map<string, string>();
+      (remoteCatsRes.data || []).forEach(rc => {
+        catIdMap.set(rc.name.toLowerCase(), rc.id);
+      });
+
+      const folderIdMap = new Map<string, string>();
+      (remoteFoldersRes.data || []).forEach(rf => {
+        folderIdMap.set(rf.name.toLowerCase(), rf.id);
+      });
+
       // 3. Migrar Categorias
       const categoriesToInsert = localCategories.filter(
         c => !existingCatNames.has(c.name.toLowerCase())
       );
 
       if (categoriesToInsert.length > 0) {
-        const payload = categoriesToInsert.map(c => ({
-          id: c.id,
-          user_id: userId,
-          name: c.name,
-          icon: c.icon,
-          color: c.color,
-          budget_limit: c.budgetLimit,
-          type: c.type,
-        }));
+        const payload = categoriesToInsert.map(c => {
+          const validId = ensureUUID(c.id);
+          catIdMap.set(c.id, validId);
+          catIdMap.set(c.name.toLowerCase(), validId);
+          return {
+            id: validId,
+            user_id: userId,
+            name: c.name,
+            icon: c.icon,
+            color: c.color,
+            budget_limit: c.budgetLimit,
+            type: c.type,
+          };
+        });
         const { error: catErr } = await supabase.from('categories').insert(payload);
         if (catErr) console.warn('Aviso ao migrar categorias:', catErr.message);
         else migratedCategoriesCount = categoriesToInsert.length;
@@ -654,19 +671,24 @@ export class DataService {
       );
 
       if (foldersToInsert.length > 0) {
-        const payload = foldersToInsert.map(f => ({
-          id: f.id,
-          user_id: userId,
-          name: f.name,
-          description: f.description || null,
-          target_budget: f.targetBudget,
-          color: f.color,
-          icon: f.icon,
-          status: f.status,
-          start_date: f.startDate || null,
-          end_date: f.endDate || null,
-          created_at: f.createdAt,
-        }));
+        const payload = foldersToInsert.map(f => {
+          const validId = ensureUUID(f.id);
+          folderIdMap.set(f.id, validId);
+          folderIdMap.set(f.name.toLowerCase(), validId);
+          return {
+            id: validId,
+            user_id: userId,
+            name: f.name,
+            description: f.description || null,
+            target_budget: f.targetBudget,
+            color: f.color,
+            icon: f.icon,
+            status: f.status,
+            start_date: f.startDate || null,
+            end_date: f.endDate || null,
+            created_at: f.createdAt,
+          };
+        });
         const { error: folderErr } = await supabase.from('folders').insert(payload);
         if (folderErr) console.warn('Aviso ao migrar pastas:', folderErr.message);
         else migratedFoldersCount = foldersToInsert.length;
@@ -678,20 +700,48 @@ export class DataService {
       );
 
       if (transactionsToInsert.length > 0) {
-        const payload = transactionsToInsert.map(t => ({
-          id: t.id,
-          user_id: userId,
-          type: t.type,
-          amount: t.amount,
-          description: t.description,
-          date: t.date,
-          category_id: t.categoryId,
-          folder_id: t.folderId || null,
-          payment_method: t.paymentMethod,
-          is_recurring: t.isRecurring,
-          notes: t.notes || null,
-          created_at: t.createdAt,
-        }));
+        const payload = transactionsToInsert.map(t => {
+          const validId = ensureUUID(t.id);
+          let mappedCatId = catIdMap.get(t.categoryId);
+          if (!mappedCatId) {
+            const localCat = localCategories.find(c => c.id === t.categoryId);
+            if (localCat) {
+              mappedCatId = catIdMap.get(localCat.name.toLowerCase()) || catIdMap.get(localCat.id);
+            }
+          }
+          if (!mappedCatId && isValidUUID(t.categoryId)) {
+            mappedCatId = t.categoryId;
+          }
+
+          let mappedFolderId: string | null = null;
+          if (t.folderId) {
+            mappedFolderId = folderIdMap.get(t.folderId) || null;
+            if (!mappedFolderId) {
+              const localF = localFolders.find(f => f.id === t.folderId);
+              if (localF) {
+                mappedFolderId = folderIdMap.get(localF.name.toLowerCase()) || folderIdMap.get(localF.id) || null;
+              }
+            }
+            if (!mappedFolderId && isValidUUID(t.folderId)) {
+              mappedFolderId = t.folderId;
+            }
+          }
+
+          return {
+            id: validId,
+            user_id: userId,
+            type: t.type,
+            amount: t.amount,
+            description: t.description,
+            date: t.date,
+            category_id: mappedCatId || null,
+            folder_id: mappedFolderId,
+            payment_method: t.paymentMethod,
+            is_recurring: t.isRecurring,
+            notes: t.notes || null,
+            created_at: t.createdAt,
+          };
+        });
         const { error: txErr } = await supabase.from('transactions').insert(payload);
         if (txErr) console.warn('Aviso ao migrar transações:', txErr.message);
         else migratedTransactionsCount = transactionsToInsert.length;
@@ -704,7 +754,7 @@ export class DataService {
 
       if (investmentsToInsert.length > 0) {
         const payload = investmentsToInsert.map(i => ({
-          id: i.id,
+          id: ensureUUID(i.id),
           user_id: userId,
           name: i.name,
           type: i.type,
@@ -725,7 +775,7 @@ export class DataService {
 
       if (goalsToInsert.length > 0) {
         const payload = goalsToInsert.map(g => ({
-          id: g.id,
+          id: ensureUUID(g.id),
           user_id: userId,
           name: g.name,
           target_amount: g.targetAmount,
@@ -803,7 +853,7 @@ export class DataService {
       return StorageService.addInvestment(inv);
     }
 
-    const newId = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newId = generateUUID();
     const now = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -844,6 +894,11 @@ export class DataService {
       return;
     }
 
+    if (!isValidUUID(inv.id)) {
+      await this.addInvestment(inv, userId);
+      return;
+    }
+
     const { error } = await supabase
       .from('investments')
       .update({
@@ -865,6 +920,11 @@ export class DataService {
   static async deleteInvestment(id: string, userId?: string | null): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) {
+      StorageService.deleteInvestment(id);
+      return;
+    }
+
+    if (!isValidUUID(id)) {
       StorageService.deleteInvestment(id);
       return;
     }
@@ -921,7 +981,7 @@ export class DataService {
       return StorageService.addSavingsGoal(goal);
     }
 
-    const newId = `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newId = generateUUID();
     const now = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -962,6 +1022,11 @@ export class DataService {
       return;
     }
 
+    if (!isValidUUID(goal.id)) {
+      await this.addSavingsGoal(goal, userId);
+      return;
+    }
+
     const { error } = await supabase
       .from('savings_goals')
       .update({
@@ -983,6 +1048,11 @@ export class DataService {
   static async deleteSavingsGoal(id: string, userId?: string | null): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase || !userId) {
+      StorageService.deleteSavingsGoal(id);
+      return;
+    }
+
+    if (!isValidUUID(id)) {
       StorageService.deleteSavingsGoal(id);
       return;
     }
