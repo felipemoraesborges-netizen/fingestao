@@ -1,5 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
+import { useMode } from '../../context/ModeContext';
+import type { ClassicTab } from '../../navigation/appRoutes';
 import type { LucideIcon } from 'lucide-react';
 import { 
   LayoutDashboard, 
@@ -12,17 +14,19 @@ import {
   PlusCircle,
   TrendingUp,
   PiggyBank,
-  Map
+  ShoppingBag,
+  BookOpen
 } from 'lucide-react';
 
 interface NavItem {
-  id: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'investments' | 'savings' | 'trail' | 'reports' | 'settings';
+  id: ClassicTab;
   label: string;
   icon: LucideIcon;
   badge?: number;
 }
 
 export const Sidebar: React.FC = () => {
+  const { preferences } = useMode();
   const { 
     activeTab, 
     setActiveTab, 
@@ -42,10 +46,14 @@ export const Sidebar: React.FC = () => {
     { id: 'categories', label: 'Categorias & Tetos', icon: Tags },
     { id: 'investments', label: 'Investimentos', icon: TrendingUp },
     { id: 'savings', label: 'Metas de Poupança', icon: PiggyBank },
-    { id: 'trail', label: 'Trilha de Conquistas', icon: Map },
+    { id: 'purchases', label: 'Metas de compra', icon: ShoppingBag },
     { id: 'reports', label: 'Relatórios & Gráficos', icon: BarChart3 },
+    { id: 'progress', label: 'Meu progresso financeiro', icon: TrendingUp },
+    { id: 'simulators', label: 'Simuladores financeiros', icon: BarChart3 },
+    { id: 'purchaseCheck', label: 'Vale a pena comprar?', icon: ShoppingBag },
     { id: 'settings', label: 'Configurações & Nuvem', icon: Settings },
   ];
+  if (preferences.libraryVisible) navItems.splice(navItems.length - 1, 0, { id: 'library', label: 'Biblioteca de educação financeira', icon: BookOpen });
 
   const handleNavClick = (tabId: NavItem['id']) => {
     setActiveTab(tabId);
@@ -66,7 +74,7 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className="hidden lg:flex lg:flex-col w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 shrink-0 h-[calc(100vh-4rem)] sticky top-16 transition-colors">
+    <aside className="hidden lg:flex lg:flex-col w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 shrink-0 h-[calc(100dvh-4rem-var(--app-mode-offset,0px))] sticky top-[calc(4rem+var(--app-mode-offset,0px))] transition-colors">
       
       {/* Navigation Links */}
       <div className="space-y-1">
@@ -79,6 +87,7 @@ export const Sidebar: React.FC = () => {
           return (
             <button
               key={item.id}
+              aria-current={isActive ? 'page' : undefined}
               onClick={() => handleNavClick(item.id)}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 isActive

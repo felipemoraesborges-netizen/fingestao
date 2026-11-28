@@ -1,148 +1,104 @@
-import React from 'react';
-import { Shield, ChevronRight, Trophy } from 'lucide-react';
-import type { Rank, UserProgress, Achievement } from '../../types';
+import { useState } from 'react';
+import { Lock, Pencil, Plus, Shield } from 'lucide-react';
+import type { AvatarConfig } from '../../data/avatarOptions';
+import type { useRanks } from '../../hooks/useRanks';
+import type { Rank, RankHistory, UserProgress } from '../../types';
 import { RankBadge } from '../common/RankBadge';
+import { AchievementIconSelect } from '../achievements/AchievementIconSelect';
+import { Personagem } from '../trail/Personagem';
+import { TrailDialog, trailButton, trailInput, trailSecondary } from '../trail/TrailDialog';
 
-interface RanksViewProps {
-  ranks: Rank[];
-  userProgress: UserProgress | null;
-  achievements: Achievement[];
-  currentRank: Rank | null;
-  nextRank: Rank | null;
+type RankDraft = Pick<Rank, 'nome' | 'cor' | 'iconeUrl' | 'conquistasNecessarias'>;
+
+function RankEditor({ rank, onClose, onSave }: {
+  rank?: Rank; onClose: () => void; onSave: (value: RankDraft, id?: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<RankDraft>(rank ?? { nome: '', cor: '#7254c7', conquistasNecessarias: 1 });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const color = /^#[0-9a-f]{6}$/i.test(draft.cor) ? draft.cor : '#7254c7';
+  return <TrailDialog title={rank ? 'Editar patente' : 'Nova patente'} onClose={onClose} busy={busy}>
+    <form className="space-y-4" onSubmit={event => {
+      event.preventDefault();
+      setBusy(true);
+      void onSave({ ...draft, cor: color }, rank?.id).then(onClose)
+        .catch(reason => setError(reason instanceof Error ? reason.message : 'Falha ao salvar.')).finally(() => setBusy(false));
+    }}>
+      <label className="grid gap-1 text-sm font-semibold">Nome<input required className={trailInput} value={draft.nome} onChange={event => setDraft({ ...draft, nome: event.target.value })} /></label>
+      <label className="flex items-center gap-2 text-sm font-semibold">Cor <input type="color" value={color} onChange={event => setDraft({ ...draft, cor: event.target.value })} /></label>
+      <label className="grid gap-1 text-sm font-semibold">Conquistas necessárias<input required type="number" min={0} step={1} max={2_147_483_647} className={trailInput}
+        value={draft.conquistasNecessarias} onChange={event => setDraft({ ...draft, conquistasNecessarias: event.target.valueAsNumber })} /></label>
+      <AchievementIconSelect value={draft.iconeUrl ?? ''} onChange={iconeUrl => setDraft({ ...draft, iconeUrl })} />
+      {draft.iconeUrl && <button type="button" className={trailSecondary} onClick={() => setDraft({ ...draft, iconeUrl: undefined })}>Usar emblema padrão</button>}
+      {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      <div><button className={trailButton} disabled={busy}>Salvar patente</button></div>
+    </form>
+  </TrailDialog>;
 }
 
-const RANK_ICONS: Record<string, string> = {
-  'Bronze': '🥉', 'Prata': '🥈', 'Ouro': '🥇',
-  'Platina': '💎', 'Diamante': '💠', 'Mestre': '👑', 'Lendário': '🌟',
-};
+export function RanksView({ ranks, rank, progress, history, avatar, onSave, onArchive, onDowngrade }: {
+  ranks: Rank[]; rank: ReturnType<typeof useRanks>; progress: UserProgress; history: RankHistory[]; avatar: AvatarConfig;
+  onSave: (value: RankDraft, id?: string) => Promise<void>; onArchive: (id: string) => Promise<void>; onDowngrade: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState<Rank | 'new'>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const reached = new Set(history.map(item => item.rankId));
+  const status = rank.current;
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
+    try { await action(); setError(''); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao atualizar a patente.'); }
+    finally { setBusy(false); }
+  };
 
-export const RanksView: React.FC<RanksViewProps> = ({ ranks, userProgress, achievements, currentRank, nextRank }) => {
-  const unlockedCount = achievements.filter(a => a.desbloqueadaEm).length;
-
-  return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
-          <Shield className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white">Sistema de Patentes</h2>
-          <p className="text-sm text-slate-500">Conquiste mais objetivos para subir de patente</p>
-        </div>
-      </div>
-
-      {/* Current status card */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 rounded-3xl p-5 mb-6 border border-slate-700 text-white">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Sua Patente Atual</p>
-            {currentRank ? (
-              <RankBadge rank={currentRank} xp={userProgress?.xp} nivel={userProgress?.nivel} size="lg" />
-            ) : (
-              <span className="text-slate-400">Sem patente</span>
-            )}
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-400">Nível</p>
-            <p className="text-3xl font-black text-white">{userProgress?.nivel ?? 1}</p>
-          </div>
-        </div>
-
-        {/* XP bar */}
-        <div>
-          <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-            <span>{userProgress?.xp ?? 0} XP</span>
-            <span>Próx. nível: {((userProgress?.nivel ?? 1)) * 500} XP</span>
-          </div>
-          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all duration-700"
-              style={{ width: `${Math.min(100, ((userProgress?.xp ?? 0) % 500) / 5)}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-700">
-          <div className="text-center">
-            <p className="text-lg font-black">{userProgress?.xp ?? 0}</p>
-            <p className="text-[10px] text-slate-400">XP Total</p>
-          </div>
-          <div className="text-center">
-            <p className="text-lg font-black text-amber-400">{unlockedCount}</p>
-            <p className="text-[10px] text-slate-400">Conquistas</p>
-          </div>
-          <div className="text-center">
-            <p className="text-lg font-black text-violet-400">
-              {nextRank ? `${nextRank.conquistasNecessarias - unlockedCount}` : '✓'}
-            </p>
-            <p className="text-[10px] text-slate-400">
-              {nextRank ? 'Para próx.' : 'Máximo!'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Ranks ladder */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1">
-          Escada de Patentes
-        </h3>
-        {ranks.map((rank, idx) => {
-          const isCurrentRank = currentRank?.id === rank.id;
-          const isUnlocked = unlockedCount >= rank.conquistasNecessarias;
-          const isNext = nextRank?.id === rank.id;
-          const icon = RANK_ICONS[rank.nome] ?? '🏅';
-
-          return (
-            <div key={rank.id} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${
-              isCurrentRank
-                ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/20 shadow-md shadow-amber-500/10'
-                : isNext
-                ? 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50'
-                : isUnlocked
-                ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/10'
-                : 'border-slate-100 dark:border-slate-800 opacity-50'
-            }`}>
-              {/* Number */}
-              <div className="text-xs text-slate-400 font-bold w-5 text-center">{idx + 1}</div>
-
-              {/* Icon + name */}
-              <div className="text-2xl">{icon}</div>
-
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-900 dark:text-white" style={{ color: isUnlocked ? rank.cor : undefined }}>
-                    {rank.nome}
-                  </span>
-                  {isCurrentRank && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">ATUAL</span>
-                  )}
-                  {isNext && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">PRÓXIMA</span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
-                  <Trophy className="w-3 h-3" />
-                  {rank.conquistasNecessarias === 0 ? 'Patente inicial' : `${rank.conquistasNecessarias} conquista${rank.conquistasNecessarias !== 1 ? 's' : ''}`}
-                </p>
-              </div>
-
-              {/* Status icon */}
-              <div>
-                {isUnlocked ? (
-                  <span className="text-emerald-500 text-lg">✓</span>
-                ) : isNext ? (
-                  <ChevronRight className="w-4 h-4 text-slate-400" />
-                ) : (
-                  <span className="text-slate-300 dark:text-slate-600 text-lg">🔒</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
+  return <section className="space-y-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <h1 className="flex items-center gap-2 text-2xl font-black"><Shield size={25} className="text-violet-600" /> Patentes</h1>
+      <button type="button" className={trailButton} onClick={() => setEditing('new')}><Plus size={17} /> Nova patente</button>
+    </div>
+    <div className="flex flex-wrap items-center gap-5 rounded-3xl border border-violet-200 bg-violet-50 p-5 dark:border-violet-900 dark:bg-violet-950/35">
+      <Personagem config={avatar} tamanho={68} />
+      <div className="min-w-0 grow space-y-2">
+        <RankBadge rank={status ?? null} size="lg" nivel={progress.nivel} xp={progress.xp} />
+        <p className="text-sm font-semibold">{rank.count} conquistas visíveis · {progress.xp.toLocaleString('pt-BR')} XP</p>
+        {rank.next && <>
+          <progress value={rank.percent} max={100} className="block h-2 w-full accent-violet-600" aria-label="Progresso da próxima patente" />
+          <p className="text-sm">{rank.remaining === 1 ? 'Falta 1 conquista' : 'Faltam ' + rank.remaining + ' conquistas'} para {rank.next.nome}.</p>
+        </>}
+        {status && status.id !== rank.eligible?.id && <button type="button" className={trailSecondary} disabled={busy} onClick={() => {
+          if (window.confirm('Deseja ajustar sua patente atual à contagem de conquistas? O histórico será preservado.')) void run(onDowngrade);
+        }}>Confirmar rebaixamento</button>}
       </div>
     </div>
-  );
-};
+    {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+    {ranks.every(item => item.arquivada) && <p className="text-sm">Adicione uma patente ou cadastre as patentes padrão no Supabase.</p>}
+    <ol className="grid gap-2">
+      {ranks.filter(item => !item.arquivada).map((item, index) => {
+        const unlocked = reached.has(item.id) || Boolean(status && item.ordem <= status.ordem);
+        return <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border bg-white p-3 dark:bg-slate-900"
+          style={{ marginInlineStart: Math.min(index, 7) * 5, borderColor: unlocked ? item.cor : '#94a3b855' }}>
+          <div className="flex flex-wrap items-center gap-2">
+            {!unlocked && <Lock size={16} aria-label="Bloqueada" />}
+            <RankBadge rank={item} />
+            <span className="text-sm">{item.conquistasNecessarias} conquistas{item.id === status?.id ? ' · Atual' : ''}</span>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className={trailSecondary} onClick={() => setEditing(item)} aria-label={'Editar ' + item.nome}><Pencil size={16} /></button>
+            <button type="button" className={trailSecondary} disabled={busy} onClick={() => {
+              const message = item.id === status?.id ? 'Remover a patente atual e recalcular sua classificação? O histórico será preservado.' : 'Remover esta patente da escada? O histórico será preservado.';
+              if (window.confirm(message)) void run(() => onArchive(item.id));
+            }}>Remover</button>
+          </div>
+        </li>;
+      })}
+    </ol>
+    {history.length > 0 && <details className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+      <summary className="cursor-pointer font-bold">Histórico de patentes</summary>
+      <ul className="mt-3 space-y-2 text-sm">{[...history].reverse().map(entry => <li key={entry.id}>
+        {ranks.find(item => item.id === entry.rankId)?.nome ?? 'Patente anterior'} · {new Date(entry.alcancadaEm).toLocaleDateString('pt-BR')}
+      </li>)}</ul>
+    </details>}
+    {editing && <RankEditor rank={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} onSave={onSave} />}
+  </section>;
+}

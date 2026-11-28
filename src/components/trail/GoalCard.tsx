@@ -1,10 +1,14 @@
 import React from 'react';
-import { CheckCircle2, Lock, Zap, ExternalLink, Pencil, Trash2, PlusCircle, MinusCircle, TrendingUp } from 'lucide-react';
+import { CheckCircle2, Lock, Zap, ExternalLink, Pencil, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
 import type { Goal } from '../../types';
+import { productIcon } from '../../data/achievementIcons';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import { ProductArt } from './ProductArt';
 
 interface GoalCardProps {
   goal: Goal;
   index: number;
+  expectedOn?: string;
   onAddContribution: (goal: Goal) => void;
   onEdit: (goal: Goal) => void;
   onDelete: (id: string) => void;
@@ -16,18 +20,7 @@ const STATUS_ICONS: Record<Goal['status'], React.ReactNode> = {
   bloqueada: <Lock className="w-5 h-5 text-slate-400" />,
 };
 
-function estimarMeses(falta: number, mediaMensal: number): string {
-  if (falta <= 0) return 'Concluído!';
-  if (mediaMensal <= 0) return '—';
-  const meses = Math.ceil(falta / mediaMensal);
-  if (meses === 1) return '~1 mês';
-  if (meses < 12) return `~${meses} meses`;
-  const anos = Math.floor(meses / 12);
-  const resto = meses % 12;
-  return `~${anos}a ${resto > 0 ? resto + 'm' : ''}`;
-}
-
-export const GoalCard: React.FC<GoalCardProps> = ({ goal, index, onAddContribution, onEdit, onDelete }) => {
+export const GoalCard: React.FC<GoalCardProps> = ({ goal, index, expectedOn, onAddContribution, onEdit, onDelete }) => {
   const pct = goal.preco > 0 ? Math.min(100, (goal.valorAcumulado / goal.preco) * 100) : 0;
   const falta = Math.max(0, goal.preco - goal.valorAcumulado);
   const isConcluida = goal.status === 'concluida';
@@ -60,17 +53,9 @@ export const GoalCard: React.FC<GoalCardProps> = ({ goal, index, onAddContributi
 
       <div className="pt-10 pb-4 px-4">
         {/* Image */}
-        {goal.imagemUrl ? (
-          <div className="w-full h-32 rounded-2xl overflow-hidden mb-3 bg-slate-100 dark:bg-slate-800">
-            <img src={goal.imagemUrl} alt={goal.nome} className={`w-full h-full object-cover ${isBloqueada ? 'grayscale opacity-50' : ''}`} />
-          </div>
-        ) : (
-          <div className={`w-full h-20 rounded-2xl mb-3 flex items-center justify-center ${
-            isBloqueada ? 'bg-slate-100 dark:bg-slate-800' : 'bg-violet-100 dark:bg-violet-950/40'
-          }`}>
-            <TrendingUp className={`w-8 h-8 ${isBloqueada ? 'text-slate-300 dark:text-slate-600' : 'text-violet-400'}`} />
-          </div>
-        )}
+        <div className={'mb-3 overflow-hidden rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 ' + (goal.imagemUrl ? 'h-32' : 'h-20')}>
+          <ProductArt url={goal.imagemUrl} icon={productIcon(goal.nome, goal.categoria)} className={isBloqueada ? 'grayscale opacity-50' : ''} />
+        </div>
 
         {/* Name & Category */}
         <div className="mb-2">
@@ -108,11 +93,10 @@ export const GoalCard: React.FC<GoalCardProps> = ({ goal, index, onAddContributi
 
         {!isConcluida && falta > 0 && (
           <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">
-            Falta <span className="font-semibold text-slate-600 dark:text-slate-300">R$ {falta.toFixed(2)}</span>
-            {' '}&bull;{' '}
-            {estimarMeses(falta, 500)} {/* TODO: use actual monthly savings */}
+            Falta <span className="font-semibold text-slate-600 dark:text-slate-300">{formatCurrency(falta)}</span> nesta meta manual
           </p>
         )}
+        {expectedOn && <p className="mb-3 text-xs text-slate-600 dark:text-slate-400">Previsão no tabuleiro · {formatDate(expectedOn)}</p>}
 
         {isConcluida && goal.conquistadoEm && (
           <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mb-3">
@@ -122,7 +106,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({ goal, index, onAddContributi
 
         {/* Actions */}
         <div className="flex gap-2 flex-wrap">
-          {!isBloqueada && !isConcluida && (
+          {!isConcluida && (
             <button
               onClick={() => onAddContribution(goal)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-colors shadow-sm shadow-violet-600/20 cursor-pointer"

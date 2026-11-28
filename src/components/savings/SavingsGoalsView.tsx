@@ -3,6 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { exportSavingsGoalsToCSV } from '../../utils/exportUtils';
 import type { SavingsGoal } from '../../types';
+import { recordSavingsMovement } from '../../services/savingsLedger';
+import { SavingsLedger } from './SavingsLedger';
 import {
   Target,
   Plus,
@@ -14,7 +16,6 @@ import {
   CheckCircle2,
   Download,
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 
 export const SavingsGoalsView: React.FC = () => {
   const {
@@ -23,11 +24,14 @@ export const SavingsGoalsView: React.FC = () => {
     updateSavingsGoal,
     deleteSavingsGoal,
     isLoadingData,
+    currentUser,
+    refreshData,
   } = useApp();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SavingsGoal | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ledger, setLedger] = useState<string>();
 
   // Form state
   const [name, setName] = useState('');
@@ -40,6 +44,7 @@ export const SavingsGoalsView: React.FC = () => {
   const [addValueOpen, setAddValueOpen] = useState(false);
   const [addValueTarget, setAddValueTarget] = useState<SavingsGoal | null>(null);
   const [addValueStr, setAddValueStr] = useState('');
+  const [addValueRequest, setAddValueRequest] = useState<string>();
 
   const openNewModal = () => {
     setEditing(null);
@@ -115,6 +120,7 @@ export const SavingsGoalsView: React.FC = () => {
   const openAddValue = (goal: SavingsGoal) => {
     setAddValueTarget(goal);
     setAddValueStr('');
+    setAddValueRequest(crypto.randomUUID());
     setAddValueOpen(true);
   };
 
@@ -129,23 +135,12 @@ export const SavingsGoalsView: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const newSaved = addValueTarget.savedAmount + val;
-      await updateSavingsGoal({
-        ...addValueTarget,
-        savedAmount: newSaved,
-      });
+      const recorded = currentUser && addValueRequest && await recordSavingsMovement(addValueTarget.id, 'aporte', val, addValueRequest);
+      if (recorded) await refreshData();
+      else await updateSavingsGoal({ ...addValueTarget, savedAmount: addValueTarget.savedAmount + val });
       setAddValueOpen(false);
-
-      // Confetti if goal reached
-      if (newSaved >= addValueTarget.targetAmount && addValueTarget.savedAmount < addValueTarget.targetAmount) {
-        confetti({
-          particleCount: 120,
-          spread: 80,
-          origin: { y: 0.6 },
-        });
-      }
-    } catch {
-      // handled
+    } catch (reason) {
+      if (currentUser) alert(reason instanceof Error ? reason.message : 'Não foi possível registrar o aporte.');
     } finally {
       setIsSubmitting(false);
     }
@@ -348,6 +343,11 @@ export const SavingsGoalsView: React.FC = () => {
                     Adicionar valor à meta
                   </button>
                 )}
+                {currentUser && <div className="mt-3">
+                  <button type="button" aria-expanded={ledger === goal.id} className="text-sm font-semibold underline"
+                    onClick={() => setLedger(ledger === goal.id ? undefined : goal.id)}>Cofrinho e histórico</button>
+                  {ledger === goal.id && <SavingsLedger goal={goal} userId={currentUser.id} />}
+                </div>}
               </div>
             );
           })}

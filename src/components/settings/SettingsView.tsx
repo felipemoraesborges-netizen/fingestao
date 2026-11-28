@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { ModeSettings } from '../layout/ModeControls';
 import { 
   getSupabaseCredentials, 
   saveSupabaseCredentials, 
@@ -31,7 +32,6 @@ export const SettingsView: React.FC = () => {
     updateProfile,
     resetDemoData,
     clearAllData,
-    triggerCelebration,
     currentUser,
     signOut,
     isCloudActive,
@@ -76,7 +76,6 @@ export const SettingsView: React.FC = () => {
       } else {
         setConnectionStatus('connected');
         setStatusMessage('Conexão com Supabase estabelecida com sucesso!');
-        triggerCelebration();
       }
     } catch (err: any) {
       setConnectionStatus('error');
@@ -273,6 +272,8 @@ CREATE TRIGGER on_auth_user_created
           Sincronize com o banco de dados PostgreSQL na nuvem para manter seus dados seguros em qualquer aparelho.
         </p>
       </div>
+
+      <ModeSettings />
 
       {/* Cloud Status & Account Card */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xs space-y-4">
@@ -535,7 +536,6 @@ CREATE TRIGGER on_auth_user_created
             onClick={() => {
               if (confirm('Deseja recarregar os dados de demonstração com as pastas de Viagem, Reforma e Natal?')) {
                 resetDemoData();
-                triggerCelebration();
                 alert('Dados de demonstração restaurados com sucesso!');
               }
             }}

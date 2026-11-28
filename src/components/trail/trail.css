@@ -1,0 +1,53 @@
+.trail-map {
+  height: min(65dvh, 620px);
+  min-height: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: radial-gradient(ellipse at 50% 60%, #ede9fe, transparent 75%), #f7f6ff;
+}
+.dark .trail-map { background: radial-gradient(ellipse at 50% 60%, #241a47, transparent 75%), #14132a; }
+.trail-map-inner { position: relative; max-width: 42rem; margin: auto; }
+.trail-line { fill: none; stroke: #8b79bd; stroke-width: 4; stroke-dasharray: 2 11; stroke-linecap: round; opacity: .65; }
+.trail-house-anchor { position: absolute; display: grid; place-items: center; width: 0; height: 0; overflow: visible; }
+.trail-house {
+  position: absolute; display: grid; place-content: center; justify-items: center; place-items: center;
+  gap: 1px; width: 3rem; height: 3rem; border: 2px solid #d0cddf; border-radius: 50%;
+  background: #e8e7ef; color: #4b4664; box-shadow: 0 4px 0 #c5c1d8; font-size: .75rem; font-weight: 800;
+}
+.dark .trail-house { background: #2d2a45; border-color: #4b4565; color: #e1dbf4; box-shadow: 0 4px 0 #211e34; }
+.trail-house-passed, .dark .trail-house-passed { background: #7352cf; border-color: #a68ce9; color: white; box-shadow: 0 4px 0 #51359e; }
+.trail-house-milestone { border-color: #d29835; }
+.trail-house-milestone.trail-house-passed { background: #965b15; border-color: #f0b94b; box-shadow: 0 4px 0 #6e4114; }
+.trail-house-product { width: 4rem; height: 4rem; padding: 4px; display: block; }
+.trail-house-highlight { animation: trail-glow 700ms ease-in-out alternate infinite; }
+.trail-house-tag, .trail-milestone-tag { position: absolute; right: -5px; top: -3px; background: #fff; color: #4b3668; border-radius: 50%; padding: 2px; }
+.trail-milestone-tag { top: auto; bottom: -6px; background: #ffe9ad; }
+.trail-product-number { position: absolute; bottom: -2px; left: -5px; background: #fff; color: #4b3668; border-radius: .5rem; padding: 0 .25rem; font-size: .64rem; }
+.trail-product-label { position: absolute; width: clamp(5rem, 23vw, 9rem); color: inherit; text-align: left; font-size: .85rem; line-height: 1.2; }
+.trail-label-right { left: 2.5rem; }
+.trail-label-left { right: 2.5rem; text-align: right; }
+.trail-map-avatar { position: absolute; bottom: .55rem; z-index: 3; width: max-content; border-radius: 1rem; filter: drop-shadow(0 3px 3px #24104c65); }
+.trail-avatar { display: block; overflow: visible; transform-origin: center bottom; }
+.trail-avatar-parado { animation: trail-idle 2.2s ease-in-out infinite; }
+.trail-avatar-andando { animation: trail-step 210ms ease-in-out infinite; }
+.trail-map-avatar .trail-avatar-andando { animation: trail-board-hop 95ms ease-out both; }
+.trail-avatar-andando .trail-avatar-steps { transform-origin: center; animation: trail-legs 220ms ease-in-out infinite alternate; }
+.trail-avatar-comemorando { animation: trail-step 550ms ease-in-out infinite; }
+.trail-milestone-pop { position: absolute; left: 1.8rem; bottom: .8rem; white-space: nowrap; border-radius: .75rem; padding: .25rem .4rem; color: #6c3a04; background: #ffe9aa; font-size: .7rem; font-weight: bold; animation: trail-enter 450ms ease-out; }
+.trail-enter { animation: trail-enter 350ms ease-out both; }
+.trail-gallery-new { animation: trail-glow 950ms ease-out 3; }
+@keyframes trail-idle { 50% { transform: translateY(-3px) rotate(-2deg); } }
+@keyframes trail-step { 50% { transform: translateY(-10px) rotate(4deg); } }
+@keyframes trail-board-hop { 38% { transform: translateY(-10px) rotate(4deg); } }
+@keyframes trail-legs { to { transform: skewX(7deg); } }
+@keyframes trail-enter { from { opacity: 0; transform: translateY(8px) scale(.88); } to { opacity: 1; transform: none; } }
+@keyframes trail-glow { 50% { box-shadow: 0 0 0 5px #b58affaa, 0 0 36px #9d59ffe0; } }
+@media (max-width: 390px) {
+  .trail-house-product { width: 3.3rem; height: 3.3rem; }
+  .trail-product-label { font-size: .75rem; }
+  .trail-label-right { left: 1.95rem; }
+  .trail-label-left { right: 1.95rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trail-avatar, .trail-avatar-steps, .trail-enter, .trail-gallery-new, .trail-house-highlight, .trail-milestone-pop { animation: none !important; }
+}

@@ -60,8 +60,8 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    <header className="sticky top-[var(--app-mode-offset,0px)] z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 lg:gap-4">
         
         {/* Logo & Brand */}
         <div className="flex items-center gap-3">
@@ -72,7 +72,7 @@ export const Navbar: React.FC = () => {
               <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
             </svg>
           </div>
-          <div>
+          <div className="hidden min-[400px]:block">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">
                 Fin<span className="text-emerald-500">Gestão</span>
@@ -96,7 +96,7 @@ export const Navbar: React.FC = () => {
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <div className="flex items-center gap-1.5 px-2 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 select-none min-w-[130px] sm:min-w-[150px] justify-center">
+          <div className="flex items-center gap-1 px-1 sm:px-2 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 select-none sm:min-w-[150px] justify-center">
             {isLoadingData ? (
               <Loader2 className="w-3.5 h-3.5 text-emerald-500 animate-spin" />
             ) : (
@@ -147,7 +147,7 @@ export const Navbar: React.FC = () => {
               className="relative p-2 rounded-xl text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/50 cursor-pointer transition-colors border border-amber-200 dark:border-amber-800/60"
               title={`${alerts.length} alertas de orçamento pendentes`}
             >
-              <Bell className="w-4 h-4 animate-bounce" />
+              <Bell className="w-4 h-4" />
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {alerts.length}
               </span>
@@ -176,10 +176,11 @@ export const Navbar: React.FC = () => {
           {/* Quick Action: Nova Despesa (Desktop & Mobile header) */}
           <button
             onClick={handleOpenNewExpense}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+            aria-label="Nova Despesa"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Nova Despesa</span>
+            <span className="hidden sm:inline">Nova Despesa</span>
           </button>
         </div>
 

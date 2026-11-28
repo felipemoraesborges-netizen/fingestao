@@ -1,6 +1,27 @@
 @import "tailwindcss";
 
+[data-play-motion="reduced"], [data-play-motion="reduced"] *, [data-play-motion="reduced"] *::before, [data-play-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
+
+.app-modes[data-mode-selector='visible'] {
+  --app-mode-offset: 3rem;
+}
+
+.app-modes[data-mode='classico'] :is(.animate-fade-in, .animate-bounce, .animate-pulse) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-modes[data-mode='jogo'] :is(.animate-fade-in, .animate-bounce, .animate-pulse) {
+    animation: none;
+  }
+}
 
 @layer base {
   * {

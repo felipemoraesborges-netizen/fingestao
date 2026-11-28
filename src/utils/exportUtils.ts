@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import type { Folder, Transaction, Category, Investment, SavingsGoal } from '../types';
 import { formatCurrency, formatDate, getPaymentMethodLabel } from './formatters';
 
@@ -32,7 +30,8 @@ export function exportFolderToCSV(folder: Folder, transactions: Transaction[], c
   downloadFile(csvContent, `relatorio_${folder.name.toLowerCase().replace(/\s+/g, '_')}.csv`, 'text/csv;charset=utf-8;');
 }
 
-export function exportFolderToPDF(folder: Folder, transactions: Transaction[], categories: Category[]): void {
+export async function exportFolderToPDF(folder: Folder, transactions: Transaction[], categories: Category[]): Promise<void> {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
   const doc = new jsPDF();
   const getCatName = (id: string) => categories.find(c => c.id === id)?.name || 'Sem categoria';
   const totalSpent = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
@@ -158,7 +157,7 @@ export function exportMonthlyReportToCSV(
   downloadFile(csvContent, `extrato_financeiro_${monthStr}.csv`, 'text/csv;charset=utf-8;');
 }
 
-export function exportMonthlyReportToPDF(
+export async function exportMonthlyReportToPDF(
   monthStr: string,
   monthName: string,
   transactions: Transaction[],
@@ -167,7 +166,8 @@ export function exportMonthlyReportToPDF(
   totalIncome: number,
   totalExpense: number,
   folderExpense: number
-): void {
+): Promise<void> {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
   const doc = new jsPDF();
   const getCatName = (id: string) => categories.find(c => c.id === id)?.name || 'Sem categoria';
   const getFolderName = (id?: string | null) => (id ? folders.find(f => f.id === id)?.name || '-' : 'Geral');

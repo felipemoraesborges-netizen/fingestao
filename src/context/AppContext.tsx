@@ -4,14 +4,16 @@ import type { Category, Folder, Transaction, UserProfile, BudgetAlert, Investmen
 import { StorageService } from '../services/storageService';
 import type { MigrationResult } from '../services/dataService';
 import { DataService } from '../services/dataService';
+import { notifyLearningActivity } from '../services/learningService';
 import { getCurrentMonthStr } from '../utils/formatters';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
-import confetti from 'canvas-confetti';
+import { classicPaths, navigateApp, resolveAppRoute, useAppPath } from '../navigation/appRoutes';
+import type { ClassicTab } from '../navigation/appRoutes';
 
 interface AppContextType {
   // Navigation
-  activeTab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail';
-  setActiveTab: (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail') => void;
+  activeTab: ClassicTab;
+  setActiveTab: (tab: ClassicTab) => void;
   selectedFolderId: string | null;
   setSelectedFolderId: (id: string | null) => void;
   selectedMonth: string;
@@ -34,6 +36,7 @@ interface AppContextType {
 
   // Cloud / Auth state
   currentUser: User | null;
+  authReady: boolean;
   session: Session | null;
   isCloudActive: boolean;
   isSupabaseConfigured: boolean;
@@ -63,7 +66,6 @@ interface AppContextType {
   updateProfile: (profile: UserProfile) => Promise<void>;
   resetDemoData: () => void;
   clearAllData: () => void;
-  triggerCelebration: () => void;
 
   // Migration & Sync
   migrateLocalDataToCloud: () => Promise<MigrationResult>;
@@ -105,7 +107,11 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation & UI state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail'>('dashboard');
+  const route = resolveAppRoute(useAppPath());
+  const [lastClassicTab, rememberClassicTab] = useState<ClassicTab>('dashboard');
+  const activeTab = route?.mode === 'classico' ? route.tab : lastClassicTab;
+  if (activeTab !== lastClassicTab) rememberClassicTab(activeTab);
+  const setActiveTab = (tab: ClassicTab) => navigateApp(classicPaths[tab]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthStr());
   
@@ -118,6 +124,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auth & Cloud state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
 
@@ -194,15 +201,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Observador de Autenticação Supabase
   useEffect(() => {
     const supabase = getSupabaseClient();
-    if (!supabase) return;
+    if (!supabase) {
+      setAuthReady(true);
+      return;
+    }
 
     // Verificar sessão existente inicial
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       const user = currentSession?.user || null;
       setCurrentUser(user);
-      loadDataForUser(user);
-    });
+      void loadDataForUser(user);
+    }).finally(() => setAuthReady(true)).catch(() => {});
 
     // Escutar eventos de auth (login, logout, refresh de token)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
@@ -313,19 +323,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDismissedAlertIds(prev => [...prev, id]);
   };
 
-  const triggerCelebration = () => {
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
-  };
-
   // Transactions CRUD
   const addTransaction = async (tx: Omit<Transaction, 'id' | 'createdAt'>): Promise<Transaction> => {
     try {
       const created = await DataService.addTransaction(tx, currentUser?.id);
       setTransactions(prev => [created, ...prev]);
+      if (currentUser && created.type === 'expense') notifyLearningActivity();
       return created;
     } catch (err: any) {
       alert(err.message || 'Erro ao registrar transação.');
@@ -396,14 +399,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = await DataService.toggleFolderStatus(id, current.status, currentUser?.id);
       if (updated) {
         setFolders(prev => prev.map(f => (f.id === id ? updated : f)));
-        if (updated.status === 'archived') {
-          const spent = transactions
-            .filter(t => t.folderId === id && t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0);
-          if (spent <= updated.targetBudget) {
-            triggerCelebration();
-          }
-        }
       }
     } catch (err: any) {
       alert(err.message || 'Erro ao alternar status da pasta.');
@@ -415,6 +410,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const created = await DataService.addCategory(catData, currentUser?.id);
       setCategories(prev => [...prev, created]);
+      if (currentUser && created.type === 'expense' && created.budgetLimit > 0) notifyLearningActivity();
       return created;
     } catch (err: any) {
       alert(err.message || 'Erro ao criar categoria.');
@@ -426,6 +422,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await DataService.updateCategory(cat, currentUser?.id);
       setCategories(prev => prev.map(c => (c.id === cat.id ? cat : c)));
+      if (currentUser && cat.type === 'expense' && cat.budgetLimit > 0) notifyLearningActivity();
     } catch (err: any) {
       alert(err.message || 'Erro ao atualizar categoria.');
       throw err;
@@ -479,6 +476,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const created = await DataService.addSavingsGoal(goalData, currentUser?.id);
       setSavingsGoals(prev => [created, ...prev]);
+      if (currentUser) notifyLearningActivity();
       return created;
     } catch (err: any) {
       alert(err.message || 'Erro ao criar meta de poupança.');
@@ -551,7 +549,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const result = await DataService.migrateLocalDataToCloud(currentUser.id);
     if (result.success) {
       await refreshData();
-      triggerCelebration();
     }
     return result;
   };
@@ -571,7 +568,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(data.user);
       setSession(data.session);
       await loadDataForUser(data.user);
-      triggerCelebration();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Falha ao autenticar.' };
@@ -597,7 +593,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.user) {
         await loadDataForUser(data.user);
       }
-      triggerCelebration();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Falha ao cadastrar conta.' };
@@ -652,6 +647,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         alerts: alerts.filter(a => !dismissedAlertIds.includes(a.id)),
         isLoadingData,
         currentUser,
+        authReady,
         session,
         isCloudActive: Boolean(currentUser),
         isSupabaseConfigured: isSupabaseConfigured(),
@@ -674,7 +670,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateProfile,
         resetDemoData,
         clearAllData,
-        triggerCelebration,
         migrateLocalDataToCloud,
         refreshData,
         signInWithEmail,

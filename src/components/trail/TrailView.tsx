@@ -1,216 +1,132 @@
-import React, { useEffect, useState } from 'react';
-import { Plus, Map, AlertCircle, Loader2, Bell, Sparkles } from 'lucide-react';
-import type { Goal, Contribution, UserProgress, Rank, Achievement } from '../../types';
+import { useState } from 'react';
+import { ArrowDownToLine, ArrowUpFromLine, Plus, Settings } from 'lucide-react';
+import type { AvatarConfig } from '../../data/avatarOptions';
+import type { useGoals } from '../../hooks/useGoals';
+import type { useRanks } from '../../hooks/useRanks';
+import type { ContributionType, Goal, UserProgress } from '../../types';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import { calculateTrail, MAX_MONEY } from '../../utils/trail';
+import { RankBadge } from '../common/RankBadge';
+import { ContributionModal } from './ContributionModal';
 import { GoalCard } from './GoalCard';
 import { GoalFormModal } from './GoalFormModal';
-import { ContributionModal } from './ContributionModal';
-import { RankBadge } from '../common/RankBadge';
+import { Personagem } from './Personagem';
+import { TrailBoard } from './TrailBoard';
+import { trailButton, trailInput, trailSecondary } from './TrailDialog';
 
-interface TrailViewProps {
+interface Props {
   goals: Goal[];
-  contributions: Contribution[];
-  isLoading: boolean;
-  error: string | null;
-  userId: string;
-  userProgress: UserProgress | null;
-  currentRank: Rank | null;
-  nextRank: Rank | null;
-  achievements: Achievement[];
-  ranks: Rank[];
-  onAddGoal: (goal: Omit<Goal, 'id' | 'createdAt'>) => Promise<void>;
-  onUpdateGoal: (goal: Goal) => Promise<void>;
-  onDeleteGoal: (id: string) => Promise<void>;
-  onAddContribution: (
-    goalId: string, valor: number, tipo: 'aporte' | 'retirada', data: string, nota?: string
-  ) => Promise<void>;
+  progress: UserProgress;
+  rank: ReturnType<typeof useRanks>;
+  trail: ReturnType<typeof calculateTrail>;
+  total: number | null;
+  displayedHouse: number;
+  avatar: AvatarConfig;
+  actions: ReturnType<typeof useGoals>;
+  onValue: (value: number) => Promise<void>;
+  onAvatar: () => void;
+  onSettings: () => void;
+  onMovement: (kind: ContributionType) => void;
+  onHistory: () => void;
+  highlight?: string;
 }
 
-function requestNotificationPermission() {
-  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
-  }
-}
-
-export const TrailView: React.FC<TrailViewProps> = ({
-  goals = [], isLoading, error, userProgress, currentRank, nextRank, achievements = [],
-  onAddGoal, onUpdateGoal, onDeleteGoal, onAddContribution,
-}) => {
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
-  const [contributionGoal, setContributionGoal] = useState<Goal | null>(null);
-
-  useEffect(() => { requestNotificationPermission(); }, []);
-
-  const safeGoals = Array.isArray(goals) ? goals : [];
-  const safeAchievements = Array.isArray(achievements) ? achievements : [];
-
-  const totalGuardado = safeGoals.reduce((s, g) => s + (Number(g.valorAcumulado) || 0), 0);
-  const totalObjetivos = safeGoals.reduce((s, g) => s + (Number(g.preco) || 0), 0);
-  const concluidas = safeGoals.filter(g => g.status === 'concluida').length;
-  const unlockedAch = safeAchievements.filter(a => a.desbloqueadaEm).length;
-
-  const handleSaveGoal = async (data: Omit<Goal, 'id' | 'createdAt'>) => {
-    if (editingGoal) {
-      await onUpdateGoal({ ...editingGoal, ...data });
-    } else {
-      await onAddGoal(data);
-    }
-    setEditingGoal(null);
-    setFormOpen(false);
+export function TrailView({ goals, progress, rank, trail, total, displayedHouse, avatar, actions, onValue, onAvatar, onSettings, onMovement, onHistory, highlight }: Props) {
+  const [form, setForm] = useState<Goal | 'new'>();
+  const [contribution, setContribution] = useState<Goal>();
+  const [draft, setDraft] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const next = trail.next;
+  const deleteGoal = async (id: string) => {
+    if (!window.confirm('Excluir este produto e seus movimentos manuais? A conquista já registrada permanece na galeria.')) return;
+    try { await actions.remove(id); setError(''); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao excluir o produto.'); }
   };
 
-  const handleDeleteGoal = async (id: string) => {
-    if (!confirm('Excluir este objetivo da trilha?')) return;
-    await onDeleteGoal(id);
-  };
-
-  const handleEditGoal = (goal: Goal) => {
-    setEditingGoal(goal);
-    setFormOpen(true);
-  };
-
-  const handleContribution = async (goalId: string, valor: number, tipo: 'aporte' | 'retirada', data: string, nota?: string) => {
-    await onAddContribution(goalId, valor, tipo, data, nota);
-    setContributionGoal(null);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
-        <Loader2 className="w-10 h-10 text-violet-500 animate-spin mb-3" />
-        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Carregando sua trilha de conquistas...</p>
-        <p className="text-xs text-slate-400 mt-1">Conectando ao Supabase</p>
+  return <div className="space-y-5">
+    <header className="flex flex-wrap justify-between gap-3">
+      <div>
+        <h1 className="text-2xl font-black sm:text-3xl">Metas</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">O dinheiro que você guarda aqui move o personagem.</p>
       </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={trailSecondary} onClick={onAvatar}><span className="grid h-6 items-center"><Personagem config={avatar} tamanho={21} /></span> Meu Personagem</button>
+        <button className={trailSecondary} onClick={onSettings} aria-label="Preferências da Trilha" title="Preferências da Trilha"><Settings size={18} /></button>
+        <button className={trailButton} onClick={() => setForm('new')}><Plus size={17} /> Novo produto</button>
+      </div>
+    </header>
+    <section className="sticky top-[var(--app-mode-offset,0px)] z-10 rounded-2xl border border-violet-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur dark:border-violet-900 dark:bg-slate-900/95 sm:px-4">
+      <div className="grid grid-cols-2 items-center gap-x-3 gap-y-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Total guardado</p>
+          <p className="text-base font-black text-violet-800 dark:text-violet-300 sm:text-xl">{total === null ? 'Indisponível' : formatCurrency(total)}</p>
+        </div>
         <div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <Map className="w-7 h-7 text-violet-500" />
-            Trilha de Conquistas
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Do mais barato ao mais caro — complete as fases e desbloqueie suas conquistas
-          </p>
+          <p className="text-sm font-black">Casa {trail.house.toLocaleString('pt-BR')}</p>
+          {total !== null && <p className="text-xs text-slate-600 dark:text-slate-400">Mais {formatCurrency(trail.nextHouseAmount)} para a próxima</p>}
         </div>
-        <div className="flex items-center gap-3">
-          {currentRank && <RankBadge rank={currentRank} xp={userProgress?.xp} nivel={userProgress?.nivel} />}
-          <button
-            onClick={() => { setEditingGoal(null); setFormOpen(true); }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold transition-all shadow-md shadow-violet-600/20 active:scale-95 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Novo Objetivo
-          </button>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Próximo produto</p>
+          <p className="truncate text-sm font-bold" title={next?.goal.nome}>{next?.goal.nome ?? 'Sem produto pendente'}</p>
+          {next && total !== null && <p className="text-xs text-slate-600 dark:text-slate-400">
+            {(next.house - trail.house).toLocaleString('pt-BR')} casas · {formatCurrency(Math.max(0, next.target - total))}
+            {next.expectedOn && <span className="block" title="Projeção pelo ritmo líquido de aportes da Trilha">Previsão {formatDate(next.expectedOn)}</span>}
+          </p>}
+        </div>
+        <div className="min-w-0">
+          <RankBadge rank={rank.current ?? null} size="sm" />
+          {rank.next && <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+            <progress value={rank.percent} max={100} className="block h-1.5 w-full accent-violet-600" aria-label="Progresso da patente" />
+            {rank.remaining === 1 ? 'Falta 1 conquista' : 'Faltam ' + rank.remaining + ' conquistas'} para {rank.next.nome}
+          </div>}
         </div>
       </div>
-
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Metas Cadastradas', value: safeGoals.length, color: 'text-violet-600 dark:text-violet-400', emoji: '🎯' },
-          { label: 'Metas Concluídas', value: concluidas, color: 'text-emerald-600 dark:text-emerald-400', emoji: '✅' },
-          { label: 'Total Guardado', value: `R$ ${totalGuardado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, color: 'text-blue-600 dark:text-blue-400', emoji: '💰' },
-          { label: 'Conquistas', value: unlockedAch, color: 'text-amber-600 dark:text-amber-400', emoji: '🏆' },
-        ].map(kpi => (
-          <div key={kpi.label} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3.5 text-center shadow-xs">
-            <div className="text-xl mb-0.5">{kpi.emoji}</div>
-            <div className={`text-lg font-black ${kpi.color}`}>{kpi.value}</div>
-            <div className="text-[11px] font-medium text-slate-400">{kpi.label}</div>
-          </div>
-        ))}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" className={trailButton} disabled={total === null} onClick={() => onMovement('aporte')}>
+          <ArrowDownToLine size={16} /> Guardar dinheiro
+        </button>
+        <button type="button" className={trailSecondary} disabled={total === null || total <= 0} onClick={() => onMovement('retirada')}>
+          <ArrowUpFromLine size={16} /> Retirar
+        </button>
+        <button type="button" className={trailSecondary} onClick={onHistory}>Histórico de aportes</button>
       </div>
-
-      {/* Next rank hint */}
-      {nextRank && (
-        <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 flex items-center gap-3">
-          <Bell className="w-4 h-4 text-amber-500 shrink-0" />
-          <p className="text-xs text-amber-700 dark:text-amber-400">
-            <span className="font-bold">Falta {Math.max(0, nextRank.conquistasNecessarias - unlockedAch)} conquista{nextRank.conquistasNecessarias - unlockedAch !== 1 ? 's' : ''}</span> para a patente <span className="font-bold">{nextRank.nome}</span>!
-          </p>
-        </div>
-      )}
-
-      {/* Error Banner */}
-      {error && (
-        <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center gap-2.5 text-sm text-red-600 dark:text-red-400">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Trail summary bar */}
-      {safeGoals.length > 0 && totalObjetivos > 0 && (
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-          <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span className="font-semibold">Progresso geral da trilha</span>
-            <span className="font-bold text-violet-600 dark:text-violet-400">
-              R$ {totalGuardado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ {totalObjetivos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-          <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-violet-500 via-indigo-500 to-emerald-500 rounded-full transition-all duration-700"
-              style={{ width: `${Math.min(100, (totalGuardado / totalObjetivos) * 100)}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* 4. Estado Vazio quando não há metas */}
-      {safeGoals.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 p-8 sm:p-12 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-3xl bg-violet-100 dark:bg-violet-950/50 flex items-center justify-center text-violet-600 dark:text-violet-400 shadow-inner">
-            <Sparkles className="w-8 h-8" />
-          </div>
-          <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">
-            Sua trilha de metas está vazia
-          </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-6">
-            Cadastre os itens que você quer comprar (móveis, eletrônicos, viagens). O FinGestão vai ordená-los automaticamente do mais barato ao mais caro em formato de fases!
-          </p>
-          <button
-            onClick={() => { setEditingGoal(null); setFormOpen(true); }}
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-sm transition-all shadow-lg shadow-violet-600/25 active:scale-95 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Adicionar primeira meta
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[...safeGoals]
-            .sort((a, b) => a.preco - b.preco)
-            .map((goal, idx) => (
-              <GoalCard
-                key={goal.id}
-                goal={goal}
-                index={idx}
-                onAddContribution={setContributionGoal}
-                onEdit={handleEditGoal}
-                onDelete={handleDeleteGoal}
-              />
-            ))
-          }
-        </div>
-      )}
-
-      {/* Modals */}
-      <GoalFormModal
-        isOpen={formOpen}
-        onClose={() => { setFormOpen(false); setEditingGoal(null); }}
-        onSave={handleSaveGoal}
-        editingGoal={editingGoal}
-      />
-
-      <ContributionModal
-        isOpen={Boolean(contributionGoal)}
-        goal={contributionGoal}
-        onClose={() => setContributionGoal(null)}
-        onSave={handleContribution}
-      />
+    </section>
+    <div className="flex flex-wrap items-end justify-between gap-2">
+      <form className="flex flex-wrap items-end gap-2" onSubmit={event => {
+        event.preventDefault();
+        setBusy(true);
+        setError('');
+        void onValue(Number(draft ?? progress.valorCasa)).then(() => setDraft(undefined))
+          .catch(reason => setError(reason instanceof Error ? reason.message : 'Falha ao salvar o valor.')).finally(() => setBusy(false));
+      }}>
+        <label className="grid gap-1 text-xs font-semibold">Valor por casa · R$
+          <input aria-label="Valor por casa em reais" className={trailInput + ' w-32'} type="number" min=".01" max={MAX_MONEY} step=".01"
+            required value={draft ?? progress.valorCasa} onChange={event => setDraft(event.target.value)} />
+        </label>
+        <button className={trailSecondary} disabled={busy || draft === undefined}>Salvar valor</button>
+      </form>
     </div>
-  );
-};
+    {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+    {total === 0 && <p role="status" className="rounded-2xl border border-dashed border-violet-300 p-4 text-sm font-semibold dark:border-violet-800">
+      Faça seu primeiro aporte para começar a andar
+    </p>}
+    <TrailBoard products={trail.products} house={displayedHouse} target={trail.house} avatar={avatar} onAvatar={onAvatar}
+      onProduct={item => setForm(item.goal)} highlight={highlight} />
+    {!goals.length && <div className="rounded-2xl border border-dashed border-violet-300 p-4 text-sm dark:border-violet-800">
+      <button className="font-bold text-violet-700 underline dark:text-violet-300" onClick={() => setForm('new')}>Cadastre o primeiro produto</button>
+      {' '}para colocá-lo no tabuleiro.
+    </div>}
+    {goals.length > 0 && <details className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <summary className="cursor-pointer text-sm font-bold">Gerenciar produtos e movimentos por meta ({goals.length})</summary>
+      <p className="my-3 text-sm text-slate-600 dark:text-slate-400">Os movimentos por produto mantêm seu histórico nas metas de compra. Use Guardar dinheiro para movimentar o saldo do tabuleiro.</p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {trail.products.map(({ goal, expectedOn }, index) => <GoalCard key={goal.id} goal={goal} index={index} expectedOn={expectedOn} onAddContribution={setContribution} onEdit={setForm} onDelete={id => void deleteGoal(id)} />)}
+      </div>
+    </details>}
+    {form && <GoalFormModal isOpen onClose={() => setForm(undefined)} editingGoal={form === 'new' ? undefined : form}
+      onSave={data => actions.save(data, form === 'new' ? undefined : form.id)} />}
+    {contribution && <ContributionModal isOpen goal={contribution} onClose={() => setContribution(undefined)}
+      onSave={(goalId, valor, tipo, data, nota) => actions.contribute({ goalId, valor, tipo, data, nota })} />}
+  </div>;
+}

@@ -1,636 +1,279 @@
-import { getSupabaseClient } from '../lib/supabase';
-import type { Goal, Contribution, Achievement, UserProgress, Rank } from '../types';
-import { generateUUID, isValidUUID, ensureUUID } from '../utils/id';
+import type { Achievement, Contribution, Goal, Rank, RankHistory, TrailPreferences, UserProgress } from '../types';
+import { generateUUID, isValidUUID } from '../utils/id';
+import { calculateTrail, cents, countAchievements, DEFAULT_HOUSE_VALUE, DEFAULT_PREFERENCES, MAX_MONEY, rankStatus, rarityFor } from '../utils/trail';
+import { productIcon } from '../data/achievementIcons';
+import { mapGoal } from './purchaseGoalsService';
+import { check, database, optional, requireMoney, rows } from './supabaseQueries';
+import type { QueryError, Row } from './supabaseQueries';
 
-function mapGoal(row: Record<string, unknown>): Goal {
+type NewAchievement = Omit<Achievement, 'id' | 'createdAt'>;
+type RankInput = Pick<Rank, 'nome' | 'cor' | 'iconeUrl' | 'conquistasNecessarias'>;
+
+function object(value: unknown): Row {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
+}
+
+function missingColumn(error: QueryError, column: string) {
+  return error && ['42703', 'PGRST204'].includes(error.code ?? '') && error.message.includes(column);
+}
+
+function mapAchievement(row: Row): Achievement {
+  const rarity = String(row.raridade) as Achievement['raridade'];
   return {
-    id: String(row.id || ''),
-    nome: String(row.nome || ''),
-    preco: Number(row.preco ?? 0),
-    categoria: String(row.categoria || 'outro'),
-    imagemUrl: (row.imagem_url as string | null) ?? undefined,
-    linkLoja: (row.link_loja as string | null) ?? undefined,
-    prioridade: (row.prioridade as number | null) ?? undefined,
-    ordemManual: (row.ordem_manual as number | null) ?? undefined,
-    status: (row.status as Goal['status']) ?? 'bloqueada',
-    valorAcumulado: Number(row.valor_acumulado ?? 0),
-    conquistadoEm: (row.conquistado_em as string | null) ?? undefined,
-    observacao: (row.observacao as string | null) ?? undefined,
-    createdAt: String(row.created_at || new Date().toISOString()),
-    updatedAt: (row.updated_at as string | null) ?? undefined,
+    id: String(row.id), goalId: optional(row.meta_id), titulo: String(row.titulo),
+    descricao: optional(row.descricao), frasePessoal: optional(row.frase_pessoal ?? row.frase),
+    iconeUrl: optional(row.icone_url), iconeNome: optional(row.icone_nome), comemorada: Boolean(row.comemorada),
+    excluida: Boolean(row.excluida), produto: row.produto_trilha as Achievement['produto'] ?? undefined,
+    raridade: ['comum', 'rara', 'epica', 'lendaria'].includes(rarity) ? rarity : 'comum',
+    desbloqueadaEm: optional(row.desbloqueada_em), personalizada: Boolean(row.personalizada),
+    oculta: Boolean(row.oculta), createdAt: String(row.created_at ?? ''),
   };
 }
 
-function mapContribution(row: Record<string, unknown>): Contribution {
+function mapRank(row: Row): Rank {
   return {
-    id: String(row.id || ''),
-    goalId: String(row.meta_id || row.goal_id || ''),
-    valor: Number(row.valor ?? 0),
-    tipo: (row.tipo as Contribution['tipo']) ?? 'aporte',
-    data: String(row.data || new Date().toISOString().slice(0, 10)),
-    nota: (row.nota as string | null) ?? undefined,
-    createdAt: String(row.created_at || new Date().toISOString()),
+    id: String(row.id), nome: String(row.nome), cor: String(row.cor), iconeUrl: optional(row.icone_url),
+    conquistasNecessarias: Number(row.conquistas_necessarias), ordem: Number(row.ordem),
+    padrao: Boolean(row.padrao), arquivada: Boolean(row.arquivada), createdAt: String(row.created_at ?? ''),
   };
 }
 
-function mapAchievement(row: Record<string, unknown>): Achievement {
+function mapProgress(row: Row): UserProgress {
+  const value = Number(row.valor_casa);
+  const prefs = object(row.preferencias_trilha);
+  const limits = prefs.limites;
+  const limitsValid = Array.isArray(limits) && limits.length === 3 &&
+    limits.every((limit, index) => typeof limit === 'number' && Number.isFinite(limit) && limit >= (index ? limits[index - 1] : 0));
   return {
-    id: String(row.id || ''),
-    goalId: (row.meta_id as string | null) ?? (row.goal_id as string | null) ?? undefined,
-    titulo: String(row.titulo || ''),
-    descricao: (row.descricao as string | null) ?? undefined,
-    iconeUrl: (row.icone_url as string | null) ?? undefined,
-    raridade: (row.raridade as Achievement['raridade']) ?? 'comum',
-    desbloqueadaEm: (row.desbloqueada_em as string | null) ?? undefined,
-    personalizada: Boolean(row.personalizada),
-    oculta: Boolean(row.oculta),
-    frasePessoal: (row.frase_pessoal as string | null) ?? undefined,
-    createdAt: String(row.created_at || new Date().toISOString()),
-    updatedAt: (row.updated_at as string | null) ?? undefined,
-  };
-}
-
-function mapUserProgress(row: Record<string, unknown>): UserProgress {
-  return {
-    userId: String(row.user_id || ''),
-    xp: Number(row.xp ?? 0),
-    nivel: Number(row.nivel ?? 1),
-    sequenciaMeses: Number(row.sequencia_meses ?? 0),
-    rankAtualId: (row.patente_atual_id as string | null) ?? (row.rank_atual_id as string | null) ?? undefined,
-    updatedAt: String(row.updated_at || new Date().toISOString()),
-  };
-}
-
-function mapRank(row: Record<string, unknown>): Rank {
-  return {
-    id: String(row.id || ''),
-    nome: String(row.nome || ''),
-    cor: String(row.cor || '#6b7280'),
-    iconeUrl: (row.icone_url as string | null) ?? undefined,
-    conquistasNecessarias: Number(row.conquistas_necessarias ?? 0),
-    ordem: Number(row.ordem ?? 0),
-    padrao: Boolean(row.padrao),
-    createdAt: String(row.created_at || new Date().toISOString()),
+    userId: String(row.user_id), xp: Number(row.xp ?? 0), nivel: Number(row.nivel ?? 1),
+    sequenciaMeses: Number(row.sequencia_meses ?? 0), rankAtualId: optional(row.patente_atual_id),
+    updatedAt: String(row.updated_at ?? ''), avatarConfig: row.avatar_config, avataresSalvos: row.avatares_salvos,
+    valorCasa: Number.isFinite(value) && value >= 0.01 ? value : DEFAULT_HOUSE_VALUE,
+    preferencias: {
+      som: prefs.som === true,
+      limites: limitsValid ? limits as TrailPreferences['limites'] : DEFAULT_PREFERENCES.limites,
+      itensPorPatente: Object.fromEntries(Object.entries(object(prefs.itensPorPatente)).filter(([, rankId]) => typeof rankId === 'string')) as Record<string, string>,
+    },
+    marcoMaximo: Number(row.marco_maximo_trilha ?? 0), revisao: optional(row.revisao_trilha),
+    promocao: row.promocao_trilha as UserProgress['promocao'] ?? undefined,
   };
 }
 
 export class GamificationService {
-  // ==========================================
-  // METAS DE COMPRA (metas_compra / goals)
-  // ==========================================
-  static async getGoals(userId: string): Promise<Goal[]> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return [];
+  static async addContribution(contribution: Omit<Contribution, 'id' | 'createdAt'>, userId: string) {
+    const { goalId, tipo, data, nota } = contribution;
+    if (!isValidUUID(goalId)) throw new Error('Identificador do produto inválido.');
+    const valor = requireMoney(contribution.valor);
+    const client = database();
+    const { data: raw, error } = await client.from('metas_compra').select('*').eq('user_id', userId).eq('id', goalId).single();
+    check(error);
+    const goal = mapGoal(raw as Row);
+    const newValue = (cents(goal.valorAcumulado) + cents(tipo === 'aporte' ? valor : -valor)) / 100;
+    if (newValue < 0 || newValue > MAX_MONEY) throw new Error('O movimento ultrapassa o saldo permitido para este produto.');
+    const status = newValue >= goal.preco ? 'concluida' : newValue > 0 ? 'em_andamento' : 'bloqueada';
+    const dateField = Object.hasOwn(raw as Row, 'conquistado_em') ? 'conquistado_em' : 'concluida_em';
+    const dates = Object.hasOwn(raw as Row, dateField) ? {
+      [dateField]: status === 'concluida' ? goal.conquistadoEm ?? new Date().toISOString() : null,
+    } : {};
+    const id = generateUUID();
+    const insert = await client.from('contribuicoes').insert({ id, user_id: userId, meta_id: goalId, valor, tipo, data, nota });
+    check(insert.error);
+    const update = await client.from('metas_compra').update({ valor_acumulado: newValue, status, ...dates })
+      .eq('user_id', userId).eq('id', goalId).eq('valor_acumulado', goal.valorAcumulado).select('id').maybeSingle();
+    if (update.error || !update.data) {
+      const rollback = await client.from('contribuicoes').delete().eq('user_id', userId).eq('id', id);
+      if (rollback.error) throw new Error('Falha ao reconciliar o movimento. Confira o saldo antes de repetir.');
+      check(update.error);
+      throw new Error('O saldo mudou em outra sessão. Tente novamente.');
+    }
+    try { await this.addContributionXp(userId); }
+    catch (reason) { console.warn('O movimento foi salvo, mas o XP não foi atualizado.', reason); }
+  }
 
-    try {
-      // Tenta primeiro 'metas_compra'
-      const { data, error } = await supabase
-        .from('metas_compra')
-        .select('*')
-        .eq('user_id', userId)
-        .order('preco', { ascending: true });
-
-      if (!error && data) {
-        return data.map(mapGoal);
-      }
-
-      // Fallback para 'goals' se 'metas_compra' não existir
-      if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-        const fallback = await supabase
-          .from('goals')
-          .select('*')
-          .eq('user_id', userId)
-          .order('preco', { ascending: true });
-        if (!fallback.error && fallback.data) {
-          return fallback.data.map(mapGoal);
-        }
-      }
-
-      if (error) throw error;
-      return [];
-    } catch (err) {
-      console.error('Erro ao buscar metas_compra:', err);
-      return [];
+  private static async addContributionXp(userId: string) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const progress = await this.getUserProgress(userId);
+      const xp = Math.min(2_147_483_647, progress.xp + 10);
+      if (await this.updateProgressRevision(progress, { xp, nivel: Math.floor(xp / 500) + 1 })) return;
     }
   }
 
-  static async addGoal(goal: Omit<Goal, 'id' | 'createdAt'>, userId: string): Promise<Goal> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) throw new Error('Supabase não conectado.');
+  static async getAchievements(userId: string) {
+    return (await rows('conquistas', userId)).map(mapAchievement);
+  }
 
-    const newId = generateUUID();
-    const payload = {
-      id: newId,
-      user_id: userId,
-      nome: goal.nome,
-      preco: goal.preco,
-      categoria: goal.categoria,
-      imagem_url: goal.imagemUrl ?? null,
-      link_loja: goal.linkLoja ?? null,
-      prioridade: goal.prioridade ?? null,
-      ordem_manual: goal.ordemManual ?? null,
-      status: goal.status ?? 'bloqueada',
-      valor_acumulado: goal.valorAcumulado ?? 0,
-      observacao: goal.observacao ?? null,
+  static async saveAchievement(userId: string, achievement: NewAchievement, id?: string): Promise<Achievement> {
+    const fields = {
+      titulo: achievement.titulo.trim(), descricao: achievement.descricao ?? null,
+      icone_url: achievement.iconeUrl ?? null, icone_nome: achievement.iconeNome ?? null,
+      raridade: achievement.raridade, desbloqueada_em: achievement.desbloqueadaEm ?? null,
+      personalizada: achievement.personalizada, oculta: achievement.oculta,
     };
-
-    let { data, error } = await supabase
-      .from('metas_compra')
-      .insert(payload)
-      .select()
-      .single();
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-      const fb = await supabase.from('goals').insert(payload).select().single();
-      data = fb.data;
-      error = fb.error;
-    }
-
-    if (error) {
-      throw new Error(`Falha ao salvar meta: ${error.message}`);
-    }
-
-    return mapGoal(data as Record<string, unknown>);
-  }
-
-  static async updateGoal(goal: Goal, userId: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return;
-
-    if (!isValidUUID(goal.id)) {
-      await this.addGoal(goal, userId);
-      return;
-    }
-
-    const payload = {
-      nome: goal.nome,
-      preco: goal.preco,
-      categoria: goal.categoria,
-      imagem_url: goal.imagemUrl ?? null,
-      link_loja: goal.linkLoja ?? null,
-      prioridade: goal.prioridade ?? null,
-      ordem_manual: goal.ordemManual ?? null,
-      status: goal.status,
-      valor_acumulado: goal.valorAcumulado,
-      conquistado_em: goal.conquistadoEm ?? null,
-      observacao: goal.observacao ?? null,
+    if (!fields.titulo) throw new Error('Informe um título.');
+    const write = (phraseColumn: string) => {
+      const table = database().from('conquistas');
+      const payload = { ...fields, [phraseColumn]: achievement.frasePessoal ?? null };
+      return (id
+        ? table.update(payload).eq('id', id).eq('user_id', userId)
+        : table.insert({ ...payload, id: generateUUID(), user_id: userId })).select().single();
     };
-
-    let { error } = await supabase
-      .from('metas_compra')
-      .update(payload)
-      .eq('id', goal.id)
-      .eq('user_id', userId);
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-      const fb = await supabase.from('goals').update(payload).eq('id', goal.id).eq('user_id', userId);
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao atualizar meta: ${error.message}`);
+    let result = await write('frase_pessoal');
+    if (missingColumn(result.error, 'frase_pessoal')) result = await write('frase');
+    check(result.error);
+    return mapAchievement(result.data as Row);
   }
 
-  static async deleteGoal(id: string, userId: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return;
-
-    if (!isValidUUID(id)) return;
-
-    let { error } = await supabase
-      .from('metas_compra')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-      const fb = await supabase.from('goals').delete().eq('id', id).eq('user_id', userId);
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao excluir meta: ${error.message}`);
+  static async deleteAchievement(id: string, userId: string) {
+    const { error } = await database().from('conquistas').update({ excluida: true }).eq('user_id', userId).eq('id', id);
+    check(error);
   }
 
-  // ==========================================
-  // CONTRIBUIÇÕES (contribuicoes / contributions)
-  // ==========================================
-  static async getContributions(userId: string, goalId?: string): Promise<Contribution[]> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return [];
+  static async claimCelebration(userId: string, id: string, promotion = false) {
+    const table = promotion ? 'historico_patentes' : 'conquistas';
+    const field = promotion ? 'comemorada_trilha' : 'comemorada';
+    const { data, error } = await database().from(table).update({ [field]: true })
+      .eq('user_id', userId).eq('id', id).eq(field, false).select('id').maybeSingle();
+    check(error);
+    return Boolean(data);
+  }
 
-    try {
-      let q = supabase
-        .from('contribuicoes')
-        .select('*')
-        .eq('user_id', userId)
-        .order('data', { ascending: false });
+  static async getUserProgress(userId: string): Promise<UserProgress> {
+    const table = database().from('progresso_usuario');
+    const read = () => database().from('progresso_usuario').select('*').eq('user_id', userId).maybeSingle();
+    let result = await read();
+    check(result.error);
+    if (!result.data) {
+      const { error } = await table.upsert({ user_id: userId }, { onConflict: 'user_id', ignoreDuplicates: true });
+      check(error);
+      result = await read();
+      check(result.error);
+    }
+    if (!result.data || !Object.hasOwn(result.data, 'valor_casa')) throw new Error('Aplique a migração trilha-conquistas.sql no Supabase.');
+    return mapProgress(result.data as Row);
+  }
 
-      if (goalId && isValidUUID(goalId)) q = q.eq('meta_id', goalId);
-      const { data, error } = await q;
-
-      if (!error && data) return data.map(mapContribution);
-
-      if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-        let q2 = supabase
-          .from('contributions')
-          .select('*')
-          .eq('user_id', userId)
-          .order('data', { ascending: false });
-        if (goalId && isValidUUID(goalId)) q2 = q2.eq('goal_id', goalId);
-        const fb = await q2;
-        if (!fb.error && fb.data) return fb.data.map(mapContribution);
+  static async saveSettings(userId: string, fields: Partial<Pick<UserProgress, 'valorCasa' | 'avatarConfig' | 'avataresSalvos' | 'preferencias'>>, total: number) {
+    const payload: Row = {};
+    if (fields.avatarConfig !== undefined) payload.avatar_config = fields.avatarConfig;
+    if (fields.avataresSalvos !== undefined) payload.avatares_salvos = fields.avataresSalvos;
+    if (fields.preferencias !== undefined) payload.preferencias_trilha = fields.preferencias;
+    if (fields.valorCasa !== undefined) {
+      const value = requireMoney(fields.valorCasa);
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const progress = await this.getUserProgress(userId);
+        const milestone = Math.floor(Math.max(0, cents(total)) / cents(value) / 10);
+        const saved = await this.updateProgressRevision(progress, {
+          ...payload, valor_casa: value, marco_maximo_trilha: Math.max(progress.marcoMaximo, milestone),
+        });
+        if (saved) return;
       }
-
-      return [];
-    } catch {
-      return [];
+      throw new Error('O progresso mudou em outra sessão. Tente novamente.');
     }
+    const { error } = await database().from('progresso_usuario').update(payload).eq('user_id', userId).select('user_id').single();
+    check(error);
   }
 
-  static async addContribution(
-    contrib: Omit<Contribution, 'id' | 'createdAt'>,
-    userId: string
-  ): Promise<Contribution> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) throw new Error('Supabase não conectado.');
+  static async getRanks(userId: string) {
+    return (await rows('patentes', userId)).map(mapRank).sort((left, right) => left.ordem - right.ordem);
+  }
 
-    const newId = generateUUID();
-    const validMetaId = ensureUUID(contrib.goalId);
-    const payloadPt = {
-      id: newId,
-      user_id: userId,
-      meta_id: validMetaId,
-      valor: contrib.valor,
-      tipo: contrib.tipo,
-      data: contrib.data,
-      nota: contrib.nota ?? null,
-    };
+  static async getRankHistory(userId: string): Promise<RankHistory[]> {
+    return (await rows('historico_patentes', userId)).map(row => ({
+      id: String(row.id), rankId: String(row.patente_id), alcancadaEm: String(row.alcancada_em ?? ''),
+      anteriorId: optional(row.anterior_trilha_id), comemorada: row.comemorada_trilha !== false,
+    })).sort((left, right) => left.alcancadaEm.localeCompare(right.alcancadaEm));
+  }
 
-    let { data, error } = await supabase
-      .from('contribuicoes')
-      .insert(payloadPt)
-      .select()
-      .single();
+  static async saveRank(userId: string, rank: RankInput, ranks: Rank[], id?: string) {
+    const fields = { nome: rank.nome.trim(), cor: rank.cor, icone_url: rank.iconeUrl || null, conquistas_necessarias: rank.conquistasNecessarias };
+    if (!fields.nome || !Number.isSafeInteger(rank.conquistasNecessarias) || rank.conquistasNecessarias < 0 || rank.conquistasNecessarias > 2_147_483_647) {
+      throw new Error('Informe um nome e uma quantidade inteira válida.');
+    }
+    const table = database().from('patentes');
+    const { error } = id
+      ? await table.update(fields).eq('user_id', userId).eq('id', id).select('id').single()
+      : await table.insert({ ...fields, id: generateUUID(), user_id: userId, ordem: Math.max(-1, ...ranks.map(item => item.ordem)) + 1, padrao: false });
+    check(error);
+  }
 
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('meta_id'))) {
-      const payloadEn = {
-        id: newId,
-        user_id: userId,
-        goal_id: validMetaId,
-        valor: contrib.valor,
-        tipo: contrib.tipo,
-        data: contrib.data,
-        nota: contrib.nota ?? null,
+  static async archiveRank(userId: string, rankId: string) {
+    const { error } = await database().from('patentes').update({ arquivada: true }).eq('user_id', userId).eq('id', rankId).select('id').single();
+    check(error);
+  }
+
+  static async unlockProducts(userId: string, goals: Goal[], achievements: Achievement[], total: number, progress: UserProgress) {
+    const trail = calculateTrail(goals, achievements, total, progress.valorCasa);
+    const reached = trail.products.filter(item => !item.achievement && item.house <= trail.house);
+    if (!reached.length) return achievements;
+    const unlockedAt = new Date().toISOString();
+    const client = database();
+    for (const { goal, house } of reached) {
+      const fields = {
+        user_id: userId, meta_id: goal.id, chave_trilha: goal.id,
+        titulo: goal.nome, icone_nome: productIcon(goal.nome, goal.categoria),
+        raridade: rarityFor(goal.preco, progress.preferencias.limites),
+        desbloqueada_em: unlockedAt, comemorada: false,
+        produto_trilha: { nome: goal.nome, preco: goal.preco, categoria: goal.categoria, imagemUrl: goal.imagemUrl, casa: house },
       };
-      const fb = await supabase.from('contributions').insert(payloadEn).select().single();
-      data = fb.data;
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao registrar aporte: ${error.message}`);
-    return mapContribution(data as Record<string, unknown>);
-  }
-
-  static async deleteContribution(id: string, userId: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return;
-
-    if (!isValidUUID(id)) return;
-
-    let { error } = await supabase
-      .from('contribuicoes')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-      const fb = await supabase.from('contributions').delete().eq('id', id).eq('user_id', userId);
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao excluir aporte: ${error.message}`);
-  }
-
-  // ==========================================
-  // CONQUISTAS (conquistas / achievements)
-  // ==========================================
-  static async getAchievements(userId: string): Promise<Achievement[]> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return [];
-
-    try {
-      const { data, error } = await supabase
-        .from('conquistas')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) return data.map(mapAchievement);
-
-      if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-        const fb = await supabase
-          .from('achievements')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
-        if (!fb.error && fb.data) return fb.data.map(mapAchievement);
+      const locked = achievements.find(item => item.goalId === goal.id && !item.desbloqueadaEm && !item.excluida);
+      if (locked) {
+        const update = await client.from('conquistas').update(fields).eq('user_id', userId)
+          .eq('id', locked.id).is('desbloqueada_em', null);
+        check(update.error);
+      } else {
+        const insert = await client.from('conquistas').upsert({ ...fields, id: generateUUID() }, { onConflict: 'chave_trilha', ignoreDuplicates: true });
+        check(insert.error);
       }
-
-      return [];
-    } catch {
-      return [];
     }
+    return this.getAchievements(userId);
   }
 
-  static async addAchievement(
-    ach: Omit<Achievement, 'id' | 'createdAt'>,
-    userId: string
-  ): Promise<Achievement> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) throw new Error('Supabase não conectado.');
-
-    const newId = generateUUID();
-    const validMetaId = ach.goalId ? (isValidUUID(ach.goalId) ? ach.goalId : ensureUUID(ach.goalId)) : null;
-    const payloadPt = {
-      id: newId,
-      user_id: userId,
-      meta_id: validMetaId,
-      titulo: ach.titulo,
-      descricao: ach.descricao ?? null,
-      icone_url: ach.iconeUrl ?? null,
-      raridade: ach.raridade,
-      desbloqueada_em: ach.desbloqueadaEm ?? null,
-      personalizada: ach.personalizada ?? false,
-      oculta: ach.oculta ?? false,
-      frase_pessoal: ach.frasePessoal ?? null,
-    };
-
-    let { data, error } = await supabase
-      .from('conquistas')
-      .insert(payloadPt)
-      .select()
-      .single();
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('meta_id'))) {
-      const payloadEn = {
-        id: newId,
-        user_id: userId,
-        goal_id: validMetaId,
-        titulo: ach.titulo,
-        descricao: ach.descricao ?? null,
-        icone_url: ach.iconeUrl ?? null,
-        raridade: ach.raridade,
-        desbloqueada_em: ach.desbloqueadaEm ?? null,
-        personalizada: ach.personalizada ?? false,
-        oculta: ach.oculta ?? false,
-        frase_pessoal: ach.frasePessoal ?? null,
-      };
-      const fb = await supabase.from('achievements').insert(payloadEn).select().single();
-      data = fb.data;
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao registrar conquista: ${error.message}`);
-    return mapAchievement(data as Record<string, unknown>);
+  private static async updateProgressRevision(progress: UserProgress, fields: Row) {
+    const update = database().from('progresso_usuario')
+      .update({ ...fields, revisao_trilha: generateUUID() }).eq('user_id', progress.userId);
+    const matching = progress.revisao ? update.eq('revisao_trilha', progress.revisao) : update.is('revisao_trilha', null);
+    const { data, error } = await matching.select().maybeSingle();
+    check(error);
+    return data ? mapProgress(data as Row) : null;
   }
 
-  static async updateAchievement(ach: Achievement, userId: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return;
-
-    if (!isValidUUID(ach.id)) {
-      await this.addAchievement(ach, userId);
-      return;
-    }
-
-    const payloadPt = {
-      titulo: ach.titulo,
-      descricao: ach.descricao ?? null,
-      icone_url: ach.iconeUrl ?? null,
-      raridade: ach.raridade,
-      desbloqueada_em: ach.desbloqueadaEm ?? null,
-      personalizada: ach.personalizada,
-      oculta: ach.oculta,
-      frase_pessoal: ach.frasePessoal ?? null,
-    };
-
-    let { error } = await supabase
-      .from('conquistas')
-      .update(payloadPt)
-      .eq('id', ach.id)
-      .eq('user_id', userId);
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-      const fb = await supabase.from('achievements').update(payloadPt).eq('id', ach.id).eq('user_id', userId);
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao atualizar conquista: ${error.message}`);
+  private static async flushPromotion(progress: UserProgress) {
+    const pending = progress.promocao;
+    if (!pending || !progress.revisao) return;
+    const { error } = await database().from('historico_patentes').upsert({
+      id: pending.id, user_id: progress.userId, patente_id: pending.rankId,
+      alcancada_em: pending.data, anterior_trilha_id: pending.anteriorId ?? null, comemorada_trilha: false,
+    }, { onConflict: 'id', ignoreDuplicates: true });
+    check(error);
+    const clear = await database().from('progresso_usuario').update({ promocao_trilha: null })
+      .eq('user_id', progress.userId).eq('revisao_trilha', progress.revisao);
+    check(clear.error);
   }
 
-  static async deleteAchievement(id: string, userId: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return;
-
-    if (!isValidUUID(id)) return;
-
-    let { error } = await supabase
-      .from('conquistas')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-      const fb = await supabase.from('achievements').delete().eq('id', id).eq('user_id', userId);
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao excluir conquista: ${error.message}`);
-  }
-
-  // ==========================================
-  // PROGRESSO DO USUÁRIO (progresso_usuario / user_progress)
-  // ==========================================
-  static async getUserProgress(userId: string): Promise<UserProgress | null> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return null;
-
-    try {
-      const { data, error } = await supabase
-        .from('progresso_usuario')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!error && data) return mapUserProgress(data as Record<string, unknown>);
-
-      if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-        const fb = await supabase
-          .from('user_progress')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (!fb.error && fb.data) return mapUserProgress(fb.data as Record<string, unknown>);
+  static async syncProgress(progress: UserProgress, ranks: Rank[], achievements: Achievement[], total: number, confirmedDowngrade = false) {
+    const userId = progress.userId;
+    const count = countAchievements(achievements);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await this.flushPromotion(progress);
+      const status = rankStatus(ranks, progress.rankAtualId, count);
+      const rank = confirmedDowngrade ? status.eligible : status.current;
+      const milestone = Math.floor(Math.max(0, cents(total)) / cents(progress.valorCasa) / 10);
+      const crossed = Math.max(0, milestone - progress.marcoMaximo);
+      const changed = rank?.id !== progress.rankAtualId;
+      const promoted = changed && rank && rank.ordem > (status.retained?.ordem ?? -1) && (status.retained || rank.conquistasNecessarias > 0);
+      if (!changed && !crossed) return progress;
+      const xp = Math.min(2_147_483_647, progress.xp + crossed * 15 + (promoted ? 150 : 0));
+      const write = await this.updateProgressRevision(progress, {
+        patente_atual_id: rank?.id ?? null, xp, nivel: Math.floor(xp / 500) + 1,
+        marco_maximo_trilha: Math.max(milestone, progress.marcoMaximo),
+        promocao_trilha: promoted && rank ? { id: generateUUID(), rankId: rank.id, anteriorId: status.retained?.id, data: new Date().toISOString() } : null,
+      });
+      if (write) {
+        await this.flushPromotion(write);
+        return write;
       }
-
-      return null;
-    } catch {
-      return null;
+      progress = await this.getUserProgress(userId);
     }
-  }
-
-  static async upsertUserProgress(progress: Partial<UserProgress> & { userId: string }): Promise<UserProgress> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !progress.userId) throw new Error('Supabase não conectado.');
-
-    const payloadPt = {
-      user_id: progress.userId,
-      xp: progress.xp ?? 0,
-      nivel: progress.nivel ?? 1,
-      sequencia_meses: progress.sequenciaMeses ?? 0,
-      patente_atual_id: progress.rankAtualId ?? null,
-    };
-
-    let { data, error } = await supabase
-      .from('progresso_usuario')
-      .upsert(payloadPt)
-      .select()
-      .single();
-
-    if (error && (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('patente_atual_id'))) {
-      const payloadEn = {
-        user_id: progress.userId,
-        xp: progress.xp ?? 0,
-        nivel: progress.nivel ?? 1,
-        sequencia_meses: progress.sequenciaMeses ?? 0,
-        rank_atual_id: progress.rankAtualId ?? null,
-      };
-      const fb = await supabase.from('user_progress').upsert(payloadEn).select().single();
-      data = fb.data;
-      error = fb.error;
-    }
-
-    if (error) throw new Error(`Falha ao salvar progresso: ${error.message}`);
-    return mapUserProgress(data as Record<string, unknown>);
-  }
-
-  // ==========================================
-  // PATENTES (patentes / ranks)
-  // ==========================================
-  static async getRanks(userId: string): Promise<Rank[]> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return [];
-
-    try {
-      const { data, error } = await supabase
-        .from('patentes')
-        .select('*')
-        .eq('user_id', userId)
-        .order('ordem', { ascending: true });
-
-      if (!error && data && data.length > 0) return data.map(mapRank);
-
-      if (error && (error.code === '42P01' || error.message?.includes('does not exist'))) {
-        const fb = await supabase
-          .from('ranks')
-          .select('*')
-          .eq('user_id', userId)
-          .order('ordem', { ascending: true });
-        if (!fb.error && fb.data && fb.data.length > 0) return fb.data.map(mapRank);
-      }
-
-      return [];
-    } catch {
-      return [];
-    }
-  }
-
-  static async seedDefaultRanks(userId: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return;
-
-    try {
-      // Tenta RPC em português primeiro
-      const { error: rpcErr } = await supabase.rpc('seed_default_patentes', { p_user_id: userId });
-      if (!rpcErr) return;
-
-      // Fallback para rpc em inglês
-      const { error: rpcErr2 } = await supabase.rpc('seed_default_ranks', { p_user_id: userId });
-      if (!rpcErr2) return;
-
-      // Se ambas as funções RPC não existirem, faz insert direto na tabela patentes / ranks com UUID válido
-      const defaultRanks = [
-        { nome: 'Bronze', cor: '#cd7f32', conquistas_necessarias: 0, ordem: 0 },
-        { nome: 'Prata', cor: '#c0c0c0', conquistas_necessarias: 2, ordem: 1 },
-        { nome: 'Ouro', cor: '#ffd700', conquistas_necessarias: 4, ordem: 2 },
-        { nome: 'Platina', cor: '#e5e4e2', conquistas_necessarias: 7, ordem: 3 },
-        { nome: 'Diamante', cor: '#b9f2ff', conquistas_necessarias: 10, ordem: 4 },
-        { nome: 'Mestre', cor: '#9b59b6', conquistas_necessarias: 15, ordem: 5 },
-        { nome: 'Lendário', cor: '#f39c12', conquistas_necessarias: 25, ordem: 6 },
-      ];
-
-      const rowsPt = defaultRanks.map(r => ({
-        id: generateUUID(),
-        user_id: userId,
-        nome: r.nome,
-        cor: r.cor,
-        conquistas_necessarias: r.conquistas_necessarias,
-        ordem: r.ordem,
-        padrao: true,
-      }));
-
-      const { error: insertErr } = await supabase.from('patentes').insert(rowsPt);
-      if (insertErr && (insertErr.code === '42P01' || insertErr.message?.includes('does not exist'))) {
-        await supabase.from('ranks').insert(rowsPt);
-      }
-    } catch (e) {
-      console.warn('Não foi possível semear patentes padrão:', e);
-    }
-  }
-
-  // ==========================================
-  // HISTÓRICO DE PATENTES (historico_patentes / rank_history)
-  // ==========================================
-  static async addRankHistory(userId: string, rankId: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return;
-
-    try {
-      const payloadPt = { id: generateUUID(), user_id: userId, patente_id: rankId };
-      const { error } = await supabase.from('historico_patentes').insert(payloadPt);
-
-      if (error && (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('patente_id'))) {
-        await supabase.from('rank_history').insert({ id: generateUUID(), user_id: userId, rank_id: rankId });
-      }
-    } catch (e) {
-      console.warn('Erro ao registrar histórico de patente:', e);
-    }
-  }
-
-  // ==========================================
-  // VIEW TOTAL GUARDADO (total_guardado)
-  // ==========================================
-  static async getTotalGuardado(userId: string): Promise<{ totalGuardado: number; totalAlvo: number; totalMetas: number; metasConcluidas: number } | null> {
-    const supabase = getSupabaseClient();
-    if (!supabase || !userId) return null;
-
-    try {
-      const { data, error } = await supabase
-        .from('total_guardado')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!error && data) {
-        return {
-          totalGuardado: Number(data.total_guardado ?? 0),
-          totalAlvo: Number(data.total_alvo ?? 0),
-          totalMetas: Number(data.total_metas ?? 0),
-          metasConcluidas: Number(data.metas_concluidas ?? 0),
-        };
-      }
-      return null;
-    } catch {
-      return null;
-    }
+    throw new Error('O progresso mudou em outra sessão. Atualize a trilha.');
   }
 }

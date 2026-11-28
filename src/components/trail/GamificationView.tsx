@@ -1,217 +1,170 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Map, Trophy, Shield, Cloud, Settings, LogIn } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { LoaderCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useGoals } from '../../hooks/useGoals';
 import { useAchievements } from '../../hooks/useAchievements';
-import { useRanks } from '../../hooks/useRanks';
-import { TrailView } from './TrailView';
+import { useAvatar } from '../../hooks/useAvatar';
+import { GamificationService } from '../../services/gamificationService';
+import { PurchaseGoalsService } from '../../services/purchaseGoalsService';
+import type { Achievement, ContributionType, RankHistory, TrailMovement, UserProgress } from '../../types';
 import { AchievementsGallery } from '../achievements/AchievementsGallery';
 import { RanksView } from '../ranks/RanksView';
-import { RankPromotionModal } from '../ranks/RankPromotionModal';
-import { ErrorBoundary } from '../common/ErrorBoundary';
-import type { Goal, Contribution, Achievement, Rank } from '../../types';
+import { EditorPersonagem } from './EditorPersonagem';
+import { useGamification } from './GamificationProvider';
+import { TrailView } from './TrailView';
+import { TrailMovementHistory } from './TrailMovementHistory';
+import { TrailMovementModal } from './TrailMovementModal';
+import { TrailSettings } from './TrailSettings';
+import { enableCelebrationSound, TrailCelebration } from './TrailCelebration';
+import { trailButton, trailSecondary } from './TrailDialog';
+import { Personagem } from './Personagem';
+import type { GameTrailTab } from '../../navigation/appRoutes';
+import './trail.css';
 
-type SubTab = 'trail' | 'achievements' | 'ranks';
+type Event = { achievement: Achievement; promotion?: never } | { promotion: RankHistory; achievement?: never };
+type Connected = NonNullable<ReturnType<typeof useGamification>>;
 
-export const GamificationView: React.FC = () => {
-  const { currentUser, isCloudActive, setAuthModalOpen, setActiveTab } = useApp();
-  const [subTab, setSubTab] = useState<SubTab>('trail');
+interface Navigation {
+  tab: GameTrailTab;
+  onTabChange: (tab: GameTrailTab) => void;
+  inventory?: string[];
+}
 
-  const goalHook = useGoals();
-  const achHook = useAchievements();
-  const rankHook = useRanks();
+function ActiveTrail({ game, userId, tab, onTabChange, inventory }: { game: Connected; userId: string } & Navigation) {
+  const { snapshot, refresh, trail, rank, house, error, setPaused } = game;
+  const goals = useGoals(userId, refresh);
+  const achievements = useAchievements(userId, refresh);
+  const avatar = useAvatar(snapshot?.progress, snapshot?.ranks ?? [], snapshot?.history ?? [], inventory);
+  const [panel, setPanel] = useState<'avatar' | 'settings'>();
+  const [movement, setMovement] = useState<{ kind: ContributionType; original?: TrailMovement }>();
+  const [presented, setPresented] = useState<Event>();
+  const [highlights, setHighlights] = useState<string[]>([]);
+  const [claimError, setClaimError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const claiming = useRef(false);
+  const [locallyClaimed, setLocallyClaimed] = useState<string[]>([]);
+  const dialogOpen = Boolean(panel || movement);
 
-  const userId = currentUser?.id ?? '';
+  const pending = (snapshot?.achievements ?? []).filter(item => item.produto && item.desbloqueadaEm &&
+    !item.comemorada && !item.oculta && !item.excluida && !locallyClaimed.includes(item.id))
+    .sort((left, right) => (left.desbloqueadaEm ?? '').localeCompare(right.desbloqueadaEm ?? '') ||
+      (left.produto?.casa ?? 0) - (right.produto?.casa ?? 0));
+  const first = pending[0];
+  const destination = first ? trail.products.find(item => item.goal.id === first.goalId)?.house ?? first.produto?.casa ?? 0 : 0;
+  const readyAchievement = first && (house >= destination || house === trail.house) ? first : undefined;
+  const readyPromotion = !first ? snapshot?.history.find(item => !item.comemorada && !locallyClaimed.includes(item.id) &&
+    snapshot.ranks.some(candidate => candidate.id === item.rankId)) : undefined;
+  const readyId = readyAchievement?.id ?? readyPromotion?.id;
 
-  // Load all gamification data when user is authenticated
-  const loadAll = useCallback(async () => {
-    if (!userId) return;
-    try {
-      await Promise.allSettled([
-        goalHook.loadGoals(userId),
-        goalHook.loadContributions(userId),
-        achHook.loadAchievements(userId),
-        rankHook.loadRanks(userId),
-        rankHook.loadUserProgress(userId),
-      ]);
-    } catch (e) {
-      console.error('Erro ao sincronizar dados da Trilha:', e);
-    }
-  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  useEffect(() => () => setPaused(false), [setPaused]);
   useEffect(() => {
-    if (userId) {
-      loadAll();
-    }
-  }, [userId, loadAll]);
+    setPaused(Boolean(presented || (readyAchievement && !dialogOpen && !claimError)));
+  }, [readyAchievement, presented, dialogOpen, claimError, setPaused]);
+  useEffect(() => {
+    if (presented || dialogOpen || !readyId || claimError || claiming.current) return;
+    claiming.current = true;
+    if (readyAchievement) onTabChange('trail');
+    void GamificationService.claimCelebration(userId, readyId, Boolean(readyPromotion)).then(claimed => {
+      setLocallyClaimed(items => [...items, readyId]);
+      if (claimed && readyAchievement) setPresented({ achievement: readyAchievement });
+      if (claimed && readyPromotion) setPresented({ promotion: readyPromotion });
+    }).catch(reason => setClaimError(reason instanceof Error ? reason.message : 'Falha ao carregar a comemoração.'))
+      .finally(() => { claiming.current = false; });
+  }, [presented, dialogOpen, readyId, claimError, userId, readyAchievement, readyPromotion, onTabChange]);
 
-  // ─── Goal actions ───
-  const handleAddGoal = async (goal: Omit<Goal, 'id' | 'createdAt'>) => {
-    if (!userId) return;
-    await goalHook.addGoal(goal, userId);
-  };
+  const sound = snapshot?.progress.preferencias.som ?? false;
+  useEffect(() => {
+    if (!sound) return;
+    document.addEventListener('pointerdown', enableCelebrationSound, { once: true });
+    document.addEventListener('keydown', enableCelebrationSound, { once: true });
+    return () => {
+      document.removeEventListener('pointerdown', enableCelebrationSound);
+      document.removeEventListener('keydown', enableCelebrationSound);
+    };
+  }, [sound]);
 
-  const handleUpdateGoal = async (goal: Goal) => {
-    if (!userId) return;
-    await goalHook.updateGoal(goal, userId);
-  };
-
-  const handleDeleteGoal = async (id: string) => {
-    if (!userId) return;
-    await goalHook.deleteGoal(id, userId);
-  };
-
-  const handleAddContribution = async (
-    goalId: string, valor: number, tipo: 'aporte' | 'retirada', data: string, nota?: string
-  ) => {
-    if (!userId) return;
-    const contrib: Omit<Contribution, 'id' | 'createdAt'> = { goalId, valor, tipo, data, nota };
-    await goalHook.addContribution(
-      contrib,
-      userId,
-      rankHook.userProgress,
-      rankHook.ranks,
-      achHook.achievements,
-      (p) => rankHook.updateUserProgress(p),
-      (a: Achievement) => achHook.pushAchievement(a),
-      (r: Rank) => rankHook.setPendingPromotion(r),
-    );
-  };
-
-  // ─── Achievement actions ───
-  const handleUpdateAchievement = async (ach: Achievement) => {
-    if (!userId) return;
-    await achHook.updateAchievement(ach, userId);
-  };
-
-  const handleDeleteAchievement = async (id: string) => {
-    if (!userId) return;
-    await achHook.deleteAchievement(id, userId);
-  };
-
-  const handleAddAchievement = async (ach: Omit<Achievement, 'id' | 'createdAt'>) => {
-    if (!userId) throw new Error('Usuário não autenticado');
-    return await achHook.addAchievement(ach, userId);
-  };
-
-  // ─── 1. Guest gate (Modo Local / Não autenticado) ───
-  if (!isCloudActive || !currentUser) {
-    return (
-      <div className="py-12 sm:py-16 px-4">
-        <div className="max-w-md mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 text-center shadow-xl shadow-slate-900/5">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-3xl bg-gradient-to-tr from-violet-600 to-indigo-500 text-white flex items-center justify-center shadow-lg shadow-violet-500/25">
-            <Cloud className="w-8 h-8" />
-          </div>
-
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200 dark:border-amber-800 mb-3">
-            Modo Local / Nuvem Desconectada
-          </span>
-
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-2">
-            Trilha de Conquistas
-          </h2>
-
-          <p className="text-sm text-slate-600 dark:text-slate-300 mb-6 leading-relaxed">
-            Conecte sua conta em <strong>Configurações & Nuvem</strong> para usar a Trilha de Conquistas. Seus objetivos, conquistas e patentes são salvos no Supabase para você nunca perder seu progresso.
-          </p>
-
-          <div className="space-y-2.5">
-            <button
-              onClick={() => setActiveTab('settings')}
-              className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold transition-all shadow-md shadow-violet-600/25 active:scale-98 cursor-pointer"
-            >
-              <Settings className="w-4 h-4" />
-              <span>Ir para Configurações & Nuvem</span>
-            </button>
-
-            <button
-              onClick={() => setAuthModalOpen(true)}
-              className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>Entrar ou Cadastrar Conta</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  if (!snapshot) {
+    return error
+      ? <div role="alert" className="space-y-3 rounded-2xl border border-red-300 p-5 dark:border-red-900"><p>{error}</p><button className={trailSecondary} onClick={() => void refresh()}>Tentar novamente</button></div>
+      : <p role="status" className="flex items-center justify-center gap-2 py-14"><LoaderCircle className="animate-spin" size={20} /> Carregando Trilha de Conquistas…</p>;
   }
 
-  // ─── Sub-tabs ───
-  const tabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'trail', label: 'Trilha de Objetivos', icon: <Map className="w-4 h-4" /> },
-    { id: 'achievements', label: 'Galeria de Conquistas', icon: <Trophy className="w-4 h-4" /> },
-    { id: 'ranks', label: 'Patentes & Nível', icon: <Shield className="w-4 h-4" /> },
-  ];
-
-  return (
-    <ErrorBoundary fallbackTitle="Erro ao carregar a Trilha de Conquistas" onReset={loadAll}>
-      <div className="space-y-6">
-        {/* Sub-nav */}
-        <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl w-full sm:w-fit overflow-x-auto shadow-xs border border-slate-200/60 dark:border-slate-700/60">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setSubTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                subTab === tab.id
-                  ? 'bg-white dark:bg-slate-900 text-violet-600 dark:text-violet-400 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        {subTab === 'trail' && (
-          <TrailView
-            goals={goalHook.goals ?? []}
-            contributions={goalHook.contributions ?? []}
-            isLoading={goalHook.isLoading}
-            error={goalHook.error}
-            userId={userId}
-            userProgress={rankHook.userProgress}
-            currentRank={rankHook.currentRank}
-            nextRank={rankHook.nextRank}
-            achievements={achHook.achievements ?? []}
-            ranks={rankHook.ranks ?? []}
-            onAddGoal={handleAddGoal}
-            onUpdateGoal={handleUpdateGoal}
-            onDeleteGoal={handleDeleteGoal}
-            onAddContribution={handleAddContribution}
-          />
-        )}
-
-        {subTab === 'achievements' && (
-          <AchievementsGallery
-            achievements={achHook.achievements ?? []}
-            isLoading={achHook.isLoading}
-            userId={userId}
-            onUpdate={handleUpdateAchievement}
-            onDelete={handleDeleteAchievement}
-            onAdd={handleAddAchievement}
-          />
-        )}
-
-        {subTab === 'ranks' && (
-          <RanksView
-            ranks={rankHook.ranks ?? []}
-            userProgress={rankHook.userProgress}
-            achievements={achHook.achievements ?? []}
-            currentRank={rankHook.currentRank}
-            nextRank={rankHook.nextRank}
-          />
-        )}
-
-        {/* Rank Promotion Modal */}
-        <RankPromotionModal
-          rank={rankHook.pendingPromotion}
-          onDismiss={rankHook.dismissPromotion}
-        />
+  const { progress, ledger, ledgerError } = snapshot;
+  const total = ledger?.total ?? 0;
+  const saveSettings = async (fields: Partial<Pick<UserProgress, 'valorCasa' | 'avatarConfig' | 'avataresSalvos' | 'preferencias'>>) => {
+    await GamificationService.saveSettings(userId, fields, total);
+    await refresh();
+  };
+  const closeCelebration = () => {
+    if (presented?.achievement) {
+      const id = presented.achievement.id;
+      setHighlights(items => [...items, id]);
+      if (!pending.length) onTabChange('achievements');
+    }
+    setPresented(undefined);
+  };
+  const [currentRank, previousRank] = presented?.promotion
+    ? [snapshot.ranks.find(item => item.id === presented.promotion?.rankId), snapshot.ranks.find(item => item.id === presented.promotion?.anteriorId)]
+    : [];
+  return <div className="space-y-4">
+    {(error || claimError || actionError || ledgerError) && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-red-300 p-3 text-sm dark:border-red-900">
+      {error || claimError || actionError || ledgerError}
+      <button type="button" className={trailSecondary} onClick={() => { setClaimError(''); setActionError(''); void refresh(); }}>Atualizar</button>
+    </div>}
+    {tab === 'trail' && <TrailView goals={snapshot.goals} progress={progress} rank={rank} trail={trail} total={ledger?.total ?? null}
+      displayedHouse={house} avatar={avatar.config} actions={goals} onValue={valorCasa => saveSettings({ valorCasa })}
+      onAvatar={() => { if (sound) enableCelebrationSound(); setPanel('avatar'); }}
+      onSettings={() => { if (sound) enableCelebrationSound(); setPanel('settings'); }} onMovement={kind => setMovement({ kind })}
+      onHistory={() => onTabChange('movements')}
+      highlight={presented?.achievement?.goalId ?? readyAchievement?.goalId} />}
+    {tab === 'movements' && <><button type="button" className={trailSecondary} onClick={() => onTabChange('trail')}>Voltar ao tabuleiro</button>
+      <TrailMovementHistory ledger={ledger} onAdd={() => setMovement({ kind: 'aporte' })}
+      onEdit={original => setMovement({ kind: original.tipo, original })}
+      onRemove={async original => { await PurchaseGoalsService.deleteTrailMovement(userId, original); await refresh(); }} /></>}
+    {tab === 'achievements' && <AchievementsGallery achievements={snapshot.achievements} products={trail.products} house={trail.house}
+      total={ledger?.total ?? null} limits={progress.preferencias.limites} rank={rank.current} highlights={highlights} actions={achievements} />}
+    {tab === 'ranks' && <RanksView ranks={snapshot.ranks} rank={rank} progress={progress} history={snapshot.history} avatar={avatar.config}
+      onSave={async (value, id) => {
+        await GamificationService.saveRank(userId, value, snapshot.ranks, id);
+        await refresh();
+      }}
+      onArchive={async id => {
+        await GamificationService.archiveRank(userId, id);
+        await refresh(id === rank.current?.id);
+      }}
+      onDowngrade={() => refresh(true)} />}
+    {tab === 'avatar' && <section className="flex flex-wrap items-center gap-5 rounded-2xl border border-violet-200 bg-violet-50 p-5 dark:border-violet-900 dark:bg-violet-950/40">
+      <Personagem config={avatar.config} tamanho={88} />
+      <div className="space-y-3">
+        <h1 className="text-2xl font-black">Meu Personagem</h1>
+        <button type="button" className={trailButton} onClick={() => setPanel('avatar')}>Personalizar personagem</button>
       </div>
-    </ErrorBoundary>
-  );
-};
+    </section>}
+    {panel === 'avatar' && <EditorPersonagem initial={avatar.config} saved={avatar.looks} locks={avatar.locks}
+      onClose={() => setPanel(undefined)} onSave={(avatarConfig, avataresSalvos) => saveSettings({ avatarConfig, avataresSalvos })} />}
+    {panel === 'settings' && <TrailSettings preferences={progress.preferencias} ranks={snapshot.ranks}
+      onClose={() => setPanel(undefined)} onSave={preferencias => saveSettings({ preferencias })} />}
+    {movement && <TrailMovementModal kind={movement.kind} original={movement.original} total={total}
+      onClose={() => setMovement(undefined)} onSave={async (value, original) => {
+        const balanceChanged = !original || value.valor !== original.valor || value.tipo !== original.tipo;
+        await PurchaseGoalsService.saveTrailMovement(userId, value, original);
+        await refresh();
+        if (balanceChanged) onTabChange('trail');
+      }} />}
+    {presented && <TrailCelebration key={presented.achievement?.id ?? presented.promotion?.id} achievement={presented.achievement}
+      rank={currentRank} previous={previousRank} avatar={avatar.config} sound={sound} onClose={closeCelebration}
+      onSound={() => {
+        if (!sound) enableCelebrationSound();
+        void saveSettings({ preferencias: { ...progress.preferencias, som: !sound } })
+          .catch(reason => setActionError(reason instanceof Error ? reason.message : 'Falha ao salvar o som.'));
+      }} />}
+  </div>;
+}
+
+export function GamificationView({ tab, onTabChange, inventory }: Navigation) {
+  const game = useGamification();
+  const { currentUser } = useApp();
+  return game && currentUser
+    ? <ActiveTrail game={game} userId={currentUser.id} tab={tab} onTabChange={onTabChange} inventory={inventory} />
+    : <p role="status" className="p-6">Carregando sua conta…</p>;
+}

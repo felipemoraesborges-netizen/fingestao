@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDate, getPaymentMethodLabel, formatMonthName } from '../../utils/formatters';
 import { renderIcon } from '../../utils/iconMap';
 import { exportMonthlyReportToCSV, exportMonthlyReportToPDF } from '../../utils/exportUtils';
+import { StatementImport } from './StatementImport';
 import { 
   Plus, 
   Search, 
@@ -30,6 +31,7 @@ export const TransactionsView: React.FC = () => {
 
   // Filters state
   const [search, setSearch] = useState('');
+  const [importing, setImporting] = useState(false);
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [folderFilter, setFolderFilter] = useState('all');
@@ -94,7 +96,7 @@ export const TransactionsView: React.FC = () => {
   };
 
   const handleExportPDF = () => {
-    exportMonthlyReportToPDF(
+    void exportMonthlyReportToPDF(
       selectedMonth,
       formatMonthName(selectedMonth),
       filtered,
@@ -103,7 +105,7 @@ export const TransactionsView: React.FC = () => {
       totalIncome,
       totalExpense,
       folderExpense
-    );
+    ).catch(() => alert('Não foi possível gerar o PDF.'));
   };
 
   return (
@@ -121,6 +123,8 @@ export const TransactionsView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold dark:border-slate-700"
+            aria-expanded={importing} onClick={() => setImporting(!importing)}>Importar extrato</button>
           <button
             onClick={handleExportCSV}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-800 shadow-xs"
@@ -148,6 +152,8 @@ export const TransactionsView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {importing && <StatementImport onClose={() => setImporting(false)} />}
 
       {/* Filtered Summary Card */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xs">

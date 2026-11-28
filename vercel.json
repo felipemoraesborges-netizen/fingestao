@@ -1,0 +1,14 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "main": false,
+      "fingestao-2.0": false
+    }
+  },
+  "rewrites": [
+    { "source": "/classico", "destination": "/index.html" },
+    { "source": "/classico/:path*", "destination": "/index.html" },
+    { "source": "/jogo", "destination": "/index.html" },
+    { "source": "/jogo/:path*", "destination": "/index.html" }
+  ]
+}

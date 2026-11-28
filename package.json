@@ -1,12 +1,15 @@
 {
-  "name": "jestao-de",
+  "name": "fingestao",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0-dev.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "avaliar": "node scripts/evaluate.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "node --test test/browser.e2e.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,15 +25,18 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "recharts": "^3.10.1",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "zod": "4.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.6.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.88.0",
+    "playwright-core": "1.65.1",
     "typescript": "~6.0.3",
     "vite": "^8.3.4"
   }

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useMode } from '../../context/ModeContext';
+import type { ClassicTab } from '../../navigation/appRoutes';
 import { 
   LayoutDashboard, 
   FolderKanban, 
@@ -11,11 +13,13 @@ import {
   Settings,
   TrendingUp,
   PiggyBank,
-  Map,
+  ShoppingBag,
+  BookOpen,
   X 
 } from 'lucide-react';
 
 export const MobileNav: React.FC = () => {
+  const { preferences } = useMode();
   const { 
     activeTab, 
     setActiveTab, 
@@ -27,7 +31,7 @@ export const MobileNav: React.FC = () => {
 
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
-  const handleNav = (tab: 'dashboard' | 'folders' | 'transactions' | 'categories' | 'reports' | 'settings' | 'investments' | 'savings' | 'trail') => {
+  const handleNav = (tab: ClassicTab) => {
     setActiveTab(tab);
     if (tab !== 'folders') {
       setSelectedFolderId(null);
@@ -83,15 +87,39 @@ export const MobileNav: React.FC = () => {
               </button>
 
               <button
-                onClick={() => handleNav('trail')}
+                onClick={() => handleNav('purchases')}
                 className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
-                  activeTab === 'trail'
-                    ? 'bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-600 dark:text-violet-400 font-bold'
+                  activeTab === 'purchases'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
                     : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                 }`}
               >
-                <Map className="w-6 h-6 mb-1 text-indigo-500" />
-                <span className="text-xs">Trilha</span>
+                <ShoppingBag className="w-6 h-6 mb-1 text-emerald-600" />
+                <span className="text-xs">Metas de compra</span>
+              </button>
+              {preferences.libraryVisible && <button type="button" onClick={() => handleNav('library')}
+                className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 p-3 text-center dark:border-slate-700"
+                aria-current={activeTab === 'library' ? 'page' : undefined}>
+                <BookOpen className="mb-1 h-6 w-6 text-emerald-600" />
+                <span className="text-xs">Biblioteca</span>
+              </button>}
+              <button type="button" onClick={() => handleNav('simulators')}
+                className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 p-3 text-center dark:border-slate-700"
+                aria-current={activeTab === 'simulators' ? 'page' : undefined}>
+                <BarChart3 className="mb-1 h-6 w-6 text-emerald-700" aria-hidden="true" />
+                <span className="text-xs">Simuladores financeiros</span>
+              </button>
+              <button type="button" onClick={() => handleNav('purchaseCheck')}
+                className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 p-3 text-center dark:border-slate-700"
+                aria-current={activeTab === 'purchaseCheck' ? 'page' : undefined}>
+                <ShoppingBag className="mb-1 h-6 w-6 text-emerald-700" aria-hidden="true" />
+                <span className="text-xs">Vale a pena comprar?</span>
+              </button>
+              <button type="button" onClick={() => handleNav('progress')}
+                className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 p-3 text-center dark:border-slate-700"
+                aria-current={activeTab === 'progress' ? 'page' : undefined}>
+                <BarChart3 className="mb-1 h-6 w-6 text-emerald-700" aria-hidden="true" />
+                <span className="text-xs">Meu progresso financeiro</span>
               </button>
 
               <button
@@ -191,7 +219,7 @@ export const MobileNav: React.FC = () => {
         <button
           onClick={() => setMoreMenuOpen(true)}
           className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
-            ['categories', 'reports', 'settings', 'investments', 'savings', 'trail'].includes(activeTab)
+            ['categories', 'reports', 'settings', 'investments', 'savings', 'purchases', 'library', 'progress', 'simulators', 'purchaseCheck'].includes(activeTab)
               ? 'text-emerald-600 dark:text-emerald-400 font-bold'
               : 'text-slate-400 dark:text-slate-500'
           }`}

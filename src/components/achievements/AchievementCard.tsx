@@ -1,83 +1,36 @@
-import React from 'react';
 import { Lock, Pencil } from 'lucide-react';
-import type { Achievement } from '../../types';
+import { achievementIcon } from '../../data/achievementIcons';
+import type { Achievement, Rank } from '../../types';
+import { formatCurrency } from '../../utils/formatters';
+import { ProductArt } from '../trail/ProductArt';
 
-interface AchievementCardProps {
-  achievement: Achievement;
-  onEdit: (ach: Achievement) => void;
-}
+export const rarityLabels = { comum: 'Comum', rara: 'Rara', epica: 'Épica', lendaria: 'Lendária' };
+const rarityColors = { comum: '#64748b', rara: '#2563eb', epica: '#7c3aed', lendaria: '#b86612' };
 
-const RARIDADE_STYLE: Record<Achievement['raridade'], { label: string; color: string; bg: string; border: string }> = {
-  comum:    { label: 'Comum',    color: '#6b7280', bg: '#6b728015', border: '#6b728040' },
-  rara:     { label: 'Rara',     color: '#3b82f6', bg: '#3b82f615', border: '#3b82f640' },
-  epica:    { label: 'Épica',    color: '#8b5cf6', bg: '#8b5cf615', border: '#8b5cf640' },
-  lendaria: { label: 'Lendária', color: '#f59e0b', bg: '#f59e0b15', border: '#f59e0b60' },
-};
-
-const RARIDADE_ICONS: Record<Achievement['raridade'], string> = {
-  comum: '⭐', rara: '💎', epica: '🔮', lendaria: '🏆',
-};
-
-export const AchievementCard: React.FC<AchievementCardProps> = ({ achievement, onEdit }) => {
-  const unlocked = Boolean(achievement.desbloqueadaEm);
-  const style = RARIDADE_STYLE[achievement.raridade];
-
-  return (
-    <div
-      className={`relative rounded-2xl border p-4 transition-all ${
-        unlocked
-          ? 'bg-white dark:bg-slate-900'
-          : 'bg-slate-50 dark:bg-slate-900/50 opacity-60 grayscale'
-      }`}
-      style={unlocked ? { borderColor: style.border, backgroundColor: style.bg } : {}}
-    >
-      {/* Raridade badge */}
-      <div
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold mb-2"
-        style={{ backgroundColor: style.bg, color: style.color, border: `1px solid ${style.border}` }}
-      >
-        {RARIDADE_ICONS[achievement.raridade]} {style.label}
-      </div>
-
-      {/* Lock overlay */}
-      {!unlocked && (
-        <div className="absolute top-3 right-3">
-          <Lock className="w-4 h-4 text-slate-400" />
-        </div>
-      )}
-
-      {/* Title */}
-      <h3 className={`font-bold text-sm mb-1 ${unlocked ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
-        {achievement.titulo}
-      </h3>
-
-      {/* Description */}
-      {achievement.descricao && (
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 line-clamp-2">{achievement.descricao}</p>
-      )}
-
-      {/* Personal phrase */}
-      {achievement.frasePessoal && unlocked && (
-        <p className="text-xs italic text-violet-600 dark:text-violet-400 mb-2">"{achievement.frasePessoal}"</p>
-      )}
-
-      {/* Date unlocked */}
-      {achievement.desbloqueadaEm && (
-        <p className="text-[10px] text-slate-400 mt-1">
-          🎉 {new Date(achievement.desbloqueadaEm).toLocaleDateString('pt-BR')}
-        </p>
-      )}
-
-      {/* Edit button */}
-      {unlocked && (
-        <button
-          onClick={() => onEdit(achievement)}
-          className="absolute bottom-3 right-3 p-1.5 rounded-lg hover:bg-white/60 dark:hover:bg-slate-800/60 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
-          title="Editar conquista"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
-      )}
+export function AchievementCard({ item, rank, highlight, missing, onEdit }: {
+  item: Achievement; rank?: Rank; highlight?: boolean; missing?: string; onEdit?: () => void;
+}) {
+  const unlocked = Boolean(item.desbloqueadaEm);
+  const Icon = achievementIcon(item.iconeNome);
+  const color = rarityColors[item.raridade];
+  return <article id={'ach-' + item.id} className={'relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 ' + (highlight ? 'trail-gallery-new' : '')}
+    style={{ borderColor: unlocked ? rank?.cor ?? color : '#8e8b9b55', borderWidth: unlocked && rank ? 2 : 1 }}>
+    <div className={'relative h-28 bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 ' + (unlocked ? '' : 'grayscale opacity-60')}>
+      <ProductArt url={item.produto?.imagemUrl ?? item.iconeUrl} icon={item.iconeNome} />
+      {!unlocked && <span className="absolute inset-0 grid place-items-center"><Lock size={26} className="drop-shadow-md" /></span>}
     </div>
-  );
-};
+    <div className="relative space-y-1 p-3">
+      <span className="absolute -top-5 right-3 grid h-10 w-10 place-items-center rounded-full border-2 bg-white text-violet-800 dark:bg-slate-900 dark:text-violet-200" style={{ borderColor: color }}>
+        <Icon size={20} />
+      </span>
+      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">{rarityLabels[item.raridade]}{item.oculta ? ' · Oculta' : ''}</p>
+      <h3 className="pr-6 font-black">{item.titulo}</h3>
+      {item.produto && <p className="text-sm font-semibold">{formatCurrency(item.produto.preco)}</p>}
+      {item.descricao && <p className="text-sm text-slate-600 dark:text-slate-400">{item.descricao}</p>}
+      {item.frasePessoal && <p className="text-sm italic text-violet-700 dark:text-violet-300">“{item.frasePessoal}”</p>}
+      {item.desbloqueadaEm && <p className="text-xs text-slate-600 dark:text-slate-400">{new Date(item.desbloqueadaEm).toLocaleDateString('pt-BR')}</p>}
+      {missing && <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">{missing}</p>}
+      {onEdit && <button type="button" aria-label={'Editar ' + item.titulo} className="absolute bottom-2 right-2 rounded-lg p-2 hover:bg-violet-100 dark:hover:bg-violet-950" onClick={onEdit}><Pencil size={17} /></button>}
+    </div>
+  </article>;
+}

@@ -96,7 +96,7 @@ export const ReportsView: React.FC = () => {
   };
 
   const handleExportPDF = () => {
-    exportMonthlyReportToPDF(
+    void exportMonthlyReportToPDF(
       selectedMonth,
       formatMonthName(selectedMonth),
       monthTransactions,
@@ -105,7 +105,7 @@ export const ReportsView: React.FC = () => {
       totalIncome,
       totalExpense,
       folderExpense
-    );
+    ).catch(() => alert('Não foi possível gerar o PDF.'));
   };
 
   return (

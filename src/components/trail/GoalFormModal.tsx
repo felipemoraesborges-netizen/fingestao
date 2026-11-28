@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Target, DollarSign, Link, Image, FileText, Layers } from 'lucide-react';
 import type { Goal } from '../../types';
 
@@ -15,29 +15,14 @@ interface GoalFormModalProps {
 }
 
 export const GoalFormModal: React.FC<GoalFormModalProps> = ({ isOpen, onClose, onSave, editingGoal }) => {
-  const [nome, setNome] = useState('');
-  const [preco, setPreco] = useState('');
-  const [categoria, setCategoria] = useState('outro');
-  const [imagemUrl, setImagemUrl] = useState('');
-  const [linkLoja, setLinkLoja] = useState('');
-  const [observacao, setObservacao] = useState('');
+  const [nome, setNome] = useState(editingGoal?.nome ?? '');
+  const [preco, setPreco] = useState(editingGoal ? String(editingGoal.preco) : '');
+  const [categoria, setCategoria] = useState(editingGoal?.categoria ?? 'outro');
+  const [imagemUrl, setImagemUrl] = useState(editingGoal?.imagemUrl ?? '');
+  const [linkLoja, setLinkLoja] = useState(editingGoal?.linkLoja ?? '');
+  const [observacao, setObservacao] = useState(editingGoal?.observacao ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [erroMsg, setErroMsg] = useState('');
-
-  useEffect(() => {
-    if (editingGoal) {
-      setNome(editingGoal.nome);
-      setPreco(String(editingGoal.preco));
-      setCategoria(editingGoal.categoria);
-      setImagemUrl(editingGoal.imagemUrl ?? '');
-      setLinkLoja(editingGoal.linkLoja ?? '');
-      setObservacao(editingGoal.observacao ?? '');
-    } else {
-      setNome(''); setPreco(''); setCategoria('outro');
-      setImagemUrl(''); setLinkLoja(''); setObservacao('');
-    }
-    setErroMsg('');
-  }, [editingGoal, isOpen]);
 
   if (!isOpen) return null;
 

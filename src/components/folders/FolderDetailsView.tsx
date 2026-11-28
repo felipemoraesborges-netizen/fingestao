@@ -131,7 +131,7 @@ export const FolderDetailsView: React.FC = () => {
           </button>
 
           <button
-            onClick={() => exportFolderToPDF(folder, folderTransactions, categories)}
+            onClick={() => { void exportFolderToPDF(folder, folderTransactions, categories).catch(() => alert('Não foi possível gerar o PDF.')); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
             title="Gerar relatório profissional em PDF"
           >

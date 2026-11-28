@@ -143,12 +143,33 @@ export interface Contribution {
   createdAt: string;
 }
 
+export interface TrailMovementInput {
+  valor: number;
+  tipo: ContributionType;
+  observacao: string | null;
+  data: string;
+}
+
+export interface TrailMovement extends TrailMovementInput {
+  id: string;
+  createdAt: string;
+}
+
+export interface TrailLedger {
+  total: number;
+  movements: TrailMovement[];
+}
+
 export interface Achievement {
   id: string;
   goalId?: string;
   titulo: string;
   descricao?: string;
   iconeUrl?: string;
+  iconeNome?: string;
+  comemorada?: boolean;
+  excluida?: boolean;
+  produto?: { nome: string; preco: number; categoria: string; imagemUrl?: string; casa: number };
   raridade: AchievementRarity;
   desbloqueadaEm?: string;
   personalizada: boolean;
@@ -165,6 +186,19 @@ export interface UserProgress {
   sequenciaMeses: number;
   rankAtualId?: string;
   updatedAt: string;
+  valorCasa: number;
+  avatarConfig: unknown;
+  avataresSalvos: unknown;
+  preferencias: TrailPreferences;
+  marcoMaximo: number;
+  revisao?: string;
+  promocao?: { id: string; rankId: string; anteriorId?: string; data: string };
+}
+
+export interface TrailPreferences {
+  som: boolean;
+  limites: [number, number, number];
+  itensPorPatente: Record<string, string>;
 }
 
 export interface Rank {
@@ -176,10 +210,13 @@ export interface Rank {
   ordem: number;
   padrao: boolean;
   createdAt: string;
+  arquivada?: boolean;
 }
 
 export interface RankHistory {
   id: string;
   rankId: string;
   alcancadaEm: string;
+  anteriorId?: string;
+  comemorada?: boolean;
 }

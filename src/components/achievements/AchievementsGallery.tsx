@@ -1,123 +1,79 @@
-import React, { useState } from 'react';
-import { Trophy, Plus, Filter } from 'lucide-react';
-import type { Achievement } from '../../types';
-import { AchievementCard } from './AchievementCard';
+import { useEffect, useState } from 'react';
+import { Plus, Trophy } from 'lucide-react';
+import type { Achievement, Rank, TrailPreferences } from '../../types';
+import type { useAchievements } from '../../hooks/useAchievements';
+import { productIcon } from '../../data/achievementIcons';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import { rarityFor } from '../../utils/trail';
+import type { TrailProduct } from '../../utils/trail';
+import { trailButton, trailInput, trailSecondary } from '../trail/TrailDialog';
+import { AchievementCard, rarityLabels } from './AchievementCard';
 import { AchievementEditModal } from './AchievementEditModal';
 
-interface AchievementsGalleryProps {
-  achievements: Achievement[];
-  isLoading: boolean;
-  userId: string;
-  onUpdate: (ach: Achievement) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-  onAdd: (ach: Omit<Achievement, 'id' | 'createdAt'>) => Promise<Achievement>;
-}
-
-type FilterRarity = 'all' | Achievement['raridade'];
-
-export const AchievementsGallery: React.FC<AchievementsGalleryProps> = ({
-  achievements, isLoading, onUpdate, onDelete, onAdd
-}) => {
-  const [editingAch, setEditingAch] = useState<Achievement | null>(null);
-  const [filterRarity, setFilterRarity] = useState<FilterRarity>('all');
+export function AchievementsGallery({ achievements, products, house, total, limits, rank, highlights, actions }: {
+  achievements: Achievement[]; products: TrailProduct[]; house: number; total: number | null; limits: TrailPreferences['limites'];
+  rank?: Rank; highlights: string[]; actions: ReturnType<typeof useAchievements>;
+}) {
+  const [editing, setEditing] = useState<Achievement | 'new'>();
+  const [rarity, setRarity] = useState('all');
   const [showLocked, setShowLocked] = useState(true);
+  const [showHidden, setShowHidden] = useState(false);
+  const visible = achievements.filter(item => !item.excluida && item.oculta === showHidden);
+  const unlocked = visible.filter(item => item.desbloqueadaEm).sort((left, right) => (right.desbloqueadaEm ?? '').localeCompare(left.desbloqueadaEm ?? ''));
+  const map = new Map(products.map(item => [item.goal.id, item]));
+  const lockedByGoal = new Map(visible.filter(item => !item.desbloqueadaEm && item.goalId).map(item => [item.goalId, item]));
+  const suppressed = new Set(achievements.filter(item => item.oculta || item.excluida).map(item => item.goalId));
+  const candidates = products.filter(item => !item.achievement && (!suppressed.has(item.goal.id) || lockedByGoal.has(item.goal.id)));
+  const last = highlights.at(-1);
+  useEffect(() => {
+    if (!last) return;
+    const frame = requestAnimationFrame(() => document.getElementById('ach-' + last)?.scrollIntoView({ block: 'center', behavior: 'auto' }));
+    return () => cancelAnimationFrame(frame);
+  }, [last]);
 
-  const unlocked = achievements.filter(a => a.desbloqueadaEm && !a.oculta);
-  const locked = achievements.filter(a => !a.desbloqueadaEm && !a.oculta);
+  const matches = (item: Achievement) => rarity === 'all' || item.raridade === rarity;
+  const unlockedCards = unlocked.filter(matches).map(item => {
+    const product = item.goalId ? map.get(item.goalId) : undefined;
+    const art = product ? { nome: product.goal.nome, preco: product.goal.preco, categoria: product.goal.categoria, imagemUrl: product.goal.imagemUrl, casa: product.house } : undefined;
+    return <AchievementCard key={item.id} item={{ ...item, produto: item.produto ?? art, iconeNome: item.iconeNome ?? (art && productIcon(art.nome, art.categoria)) }}
+      rank={rank} highlight={highlights.includes(item.id)} onEdit={() => setEditing(item)} />;
+  });
+  const lockedCards = showLocked ? [
+    ...candidates.filter(product => !showHidden || lockedByGoal.has(product.goal.id)).map(({ goal, house: goalHouse, target, expectedOn }) => {
+      const record = lockedByGoal.get(goal.id);
+      const item: Achievement = {
+        id: goal.id, titulo: goal.nome, raridade: rarityFor(goal.preco, limits), personalizada: false, oculta: false, createdAt: goal.createdAt,
+        ...record, iconeNome: record?.iconeNome ?? productIcon(goal.nome, goal.categoria),
+        produto: { nome: goal.nome, preco: goal.preco, categoria: goal.categoria, imagemUrl: goal.imagemUrl, casa: goalHouse },
+      };
+      const missing = total === null ? 'Saldo da Trilha indisponível' :
+        'Faltam ' + formatCurrency(Math.max(0, target - total)) + ' · ' + Math.max(0, goalHouse - house).toLocaleString('pt-BR') +
+        ' casas' + (expectedOn ? ' · Previsão ' + formatDate(expectedOn) : '');
+      return matches(item) && <AchievementCard key={item.id} item={item} missing={missing} onEdit={record ? () => setEditing(record) : undefined} />;
+    }),
+    ...visible.filter(item => !item.desbloqueadaEm && (!item.goalId || !map.has(item.goalId)) && matches(item)).map(item =>
+      <AchievementCard key={item.id} item={item} onEdit={() => setEditing(item)} />),
+  ].filter(Boolean) : [];
 
-  const filtered = [...unlocked, ...(showLocked ? locked : [])].filter(a =>
-    filterRarity === 'all' || a.raridade === filterRarity
-  );
-
-  const handleAddCustom = async () => {
-    const titulo = prompt('Título da conquista personalizada:');
-    if (!titulo?.trim()) return;
-    await onAdd({
-      titulo: titulo.trim(),
-      raridade: 'comum',
-      desbloqueadaEm: new Date().toISOString(),
-      personalizada: true,
-      oculta: false,
-    });
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <div className="w-10 h-10 rounded-full border-4 border-amber-500/30 border-t-amber-500 animate-spin mb-3" />
-        <p className="text-sm text-slate-500">Carregando conquistas...</p>
+  return <section className="space-y-4">
+    <div className="flex flex-wrap justify-between gap-3">
+      <div>
+        <h1 className="flex items-center gap-2 text-2xl font-black"><Trophy size={23} className="text-amber-600" /> Galeria de Conquistas</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{unlocked.length} desbloqueadas {showHidden ? 'e ocultas' : 'e visíveis'}</p>
       </div>
-    );
-  }
-
-  return (
-    <div>
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-amber-500" />
-            Galeria de Conquistas
-          </h2>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {unlocked.length} desbloqueada{unlocked.length !== 1 ? 's' : ''} de {achievements.filter(a => !a.oculta).length}
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setShowLocked(!showLocked)}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
-              showLocked ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-              : 'border-slate-200 dark:border-slate-700 text-slate-400'
-            }`}>
-            {showLocked ? '🔒 Ocultar bloqueadas' : '🔒 Ver bloqueadas'}
-          </button>
-          <button onClick={handleAddCustom}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold transition-colors shadow-sm shadow-amber-500/20 cursor-pointer">
-            <Plus className="w-3.5 h-3.5" />
-            Conquista Manual
-          </button>
-        </div>
-      </div>
-
-      {/* Rarity filter */}
-      <div className="flex gap-2 mb-5 flex-wrap">
-        <div className="flex items-center gap-1 text-xs text-slate-400 mr-1">
-          <Filter className="w-3.5 h-3.5" />
-        </div>
-        {(['all', 'comum', 'rara', 'epica', 'lendaria'] as const).map(r => (
-          <button key={r} onClick={() => setFilterRarity(r)}
-            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-              filterRarity === r
-                ? 'bg-amber-500 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}>
-            {r === 'all' ? 'Todas' : r === 'epica' ? 'Épica' : r === 'lendaria' ? 'Lendária' : r.charAt(0).toUpperCase() + r.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* Grid */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-5xl mb-3">🏆</div>
-          <p className="text-slate-500">Nenhuma conquista aqui ainda.</p>
-          <p className="text-sm text-slate-400 mt-1">Complete objetivos na Trilha para desbloquear conquistas!</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(ach => (
-            <AchievementCard key={ach.id} achievement={ach} onEdit={setEditingAch} />
-          ))}
-        </div>
-      )}
-
-      <AchievementEditModal
-        isOpen={Boolean(editingAch)}
-        achievement={editingAch}
-        onClose={() => setEditingAch(null)}
-        onSave={onUpdate}
-        onDelete={onDelete}
-      />
+      <button className={trailButton} onClick={() => setEditing('new')}><Plus size={16} /> Conquista manual</button>
     </div>
-  );
-};
+    <div className="flex flex-wrap gap-2">
+      <select value={rarity} onChange={event => setRarity(event.target.value)} aria-label="Filtrar por raridade" className={trailInput}>
+        <option value="all">Todas as raridades</option>
+        {Object.entries(rarityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+      </select>
+      <button type="button" className={trailSecondary} onClick={() => setShowLocked(!showLocked)} aria-pressed={showLocked}>{showLocked ? 'Ocultar bloqueadas' : 'Ver bloqueadas'}</button>
+      <button type="button" className={trailSecondary} onClick={() => setShowHidden(!showHidden)} aria-pressed={showHidden}>{showHidden ? 'Ver visíveis' : 'Gerenciar ocultas'}</button>
+    </div>
+    {unlockedCards.length + lockedCards.length
+      ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{unlockedCards}{lockedCards}</div>
+      : <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm dark:border-slate-700">Nenhuma conquista com estes filtros.</p>}
+    {editing && <AchievementEditModal item={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} actions={actions} />}
+  </section>;
+}

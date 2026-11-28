@@ -1,5 +1,5 @@
 # SQL — Trilha de Conquistas (Gamificação)
-> Cole este bloco no **SQL Editor** do Supabase caso queira recriar ou ajustar as tabelas.
+> Referência do esquema original. A [migração aditiva](src/database/trilha-conquistas.sql) corresponde à versão anterior da Trilha. Consulte a [documentação da atualização](TRILHA-CONQUISTAS.md) para conhecer o contrato do saldo próprio e o roteiro de teste.
 
 ```sql
 -- ============================================================
